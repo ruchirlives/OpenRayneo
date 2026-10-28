@@ -11,6 +11,7 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 internal class CodexClient(private val settings: AppSettings, private val changed: () -> Unit,
+    private val historyReady: () -> Unit = {},
     private val finalAnswer: (String, String) -> Unit) {
     data class Request(val id: Any, val method: String, val params: JSONObject, val details: String)
     private val main = Handler(Looper.getMainLooper())
@@ -18,7 +19,8 @@ internal class CodexClient(private val settings: AppSettings, private val change
     private var socket: WebSocket? = null
     private var generation = 0
     private var nextID = 0
-    private val pending = mutableMapOf<Int, (JSONObject) -> Unit>()
+    private data class Pending(val complete: (JSONObject) -> Unit, val failed: ((String) -> Unit)?)
+    private val pending = mutableMapOf<Int, Pending>()
     private var threadID: String? = null
     private var turnID: String? = null
     private val messages = linkedMapOf<String, String>()
@@ -29,10 +31,19 @@ internal class CodexClient(private val settings: AppSettings, private val change
     var status = "Computer not connected"; private set
     var answer = ""; private set
     var question = ""; private set
+    var recentProjects = emptyList<RecentProject>(); private set
+    var loadingProjects = false; private set
+    var projectsError: String? = null; private set
+    var currentProject = ""; private set
+    var currentThreadTitle = ""; private set
+    var readOnly = false; private set
+    var loadingHistory = false; private set
+    var history = emptyList<ChatRecord>(); private set
 
-    fun connect() {
+    fun connect(project: RecentProject? = null) {
         close()
-        val config = settings.read()
+        val config = JSONObject(settings.read().toString())
+        if (project != null) config.put("codexThread", project.threadId).put("codexCwd", project.cwd)
         val endpoint = config.optString("codexUrl").trim()
         val uri = URI(endpoint)
         require(uri.scheme == "wss" || (uri.scheme == "ws" && uri.host in setOf("127.0.0.1", "localhost", "::1"))) {
@@ -72,26 +83,106 @@ internal class CodexClient(private val settings: AppSettings, private val change
         val cwd = config.optString("codexCwd").trim()
         if (cwd.isNotEmpty()) params.put("cwd", cwd)
         if (saved != null) params.put("threadId", saved)
-        rpc(if (saved == null) "thread/start" else "thread/resume", params) { result ->
-            val thread = result.getJSONObject("thread")
+        if (saved != null) params.put("excludeTurns", true)
+        rpc(if (saved == null) "thread/start" else "thread/resume", params, onError = { error ->
+            if (saved != null && error.contains("active writer", true)) {
+                rpc("thread/read", JSONObject().put("threadId", saved).put("includeTurns", false), onError = {
+                    status = "Could not open this conversation: $it"; loadingHistory = false; changed()
+                }) { result -> openedThread(result.getJSONObject("thread"), cwd, true, true) }
+            } else { status = "Could not resume conversation: $error"; loadingHistory = false; changed() }
+        }) { result -> openedThread(result.getJSONObject("thread"), cwd, false, saved != null) }
+    }
+
+    private fun openedThread(thread: JSONObject, cwd: String, viewOnly: Boolean, loadHistory: Boolean) {
             threadID = thread.getString("id")
-            val updated = settings.read().put("codexThread", threadID)
+            currentProject = thread.optString("cwd").ifBlank { cwd }
+            currentThreadTitle = thread.optString("name").takeUnless { it == "null" }.orEmpty()
+            val updated = settings.read().put("codexThread", threadID).put("codexCwd", currentProject)
             settings.save(updated)
             connected = true
+            readOnly = viewOnly
             val turns = thread.optJSONArray("turns")
             val last = turns?.optJSONObject(turns.length() - 1)
-            running = last?.optString("status") == "inProgress" || thread.optJSONObject("status")?.optString("type") == "active"
+            running = !viewOnly && (last?.optString("status") == "inProgress" || thread.optJSONObject("status")?.optString("type") == "active")
             turnID = if (running) last?.optString("id") else null
-            messages.clear(); answer = ""; question = ""
+            messages.clear(); answer = ""; question = ""; history = emptyList()
             last?.optJSONArray("items")?.let { items -> for (i in 0 until items.length()) acceptItem(items.getJSONObject(i)) }
-            status = if (running) "Resumed the running computer task" else "Codex connected. Ready for tasks."
+            status = if (viewOnly) "Open on desktop · viewing history" else if (running) "Resumed the running computer task" else "Codex connected. Ready for tasks."
+            loadingHistory = loadHistory
             changed()
+            val opened = threadID
+            if (loadHistory) rpc("thread/turns/list", JSONObject().put("threadId", opened).put("limit", 20)
+                .put("sortDirection", "desc").put("itemsView", "full"), onError = {
+                    loadingHistory = false; status = "Conversation opened; history could not be loaded: $it"; changed()
+                }) { result ->
+                if (threadID == opened) {
+                    val turns = result.optJSONArray("data") ?: JSONArray()
+                    val turn = turns.optJSONObject(0)
+                    if (running) turnID = turn?.optString("id")
+                    val records = CodexHistory.records(turns)
+                    history = records.dropLast(1)
+                    question = records.lastOrNull()?.question.orEmpty()
+                    answer = records.lastOrNull()?.answer.orEmpty()
+                    loadingHistory = false
+                    changed()
+                    historyReady()
+                }
+            }
+    }
+
+    fun forkViewedThread() {
+        check(connected && readOnly && !loadingHistory) { "Open a read-only conversation first." }
+        val source = checkNotNull(threadID)
+        loadingHistory = true; status = "Creating a separate continuation…"; changed()
+        rpc("thread/fork", JSONObject().put("threadId", source).put("excludeTurns", true)
+            .put("approvalPolicy", "on-request").put("approvalsReviewer", "user").put("sandbox", "workspace-write"), onError = {
+                loadingHistory = false; status = "Could not create continuation: $it"; changed()
+            }) { result -> openedThread(result.getJSONObject("thread"), currentProject, false, true) }
+    }
+
+    fun refreshRecentProjects() {
+        check(connected && !running && requests.isEmpty()) { "Finish the current task or approvals before choosing a project." }
+        if (loadingProjects) return
+        loadingProjects = true; projectsError = null; changed()
+        val found = mutableListOf<RecentProject>()
+        fun page(cursor: String?, number: Int) {
+            val params = JSONObject().put("limit", 100).put("sortKey", "updated_at").put("sortDirection", "desc")
+                .put("archived", false).put("sourceKinds", JSONArray(listOf("cli", "vscode", "appServer", "unknown")))
+            if (cursor != null) params.put("cursor", cursor)
+            rpc("thread/list", params, onError = { message ->
+                loadingProjects = false; projectsError = message; changed()
+            }) { result ->
+                val data = result.optJSONArray("data") ?: JSONArray()
+                for (i in 0 until data.length()) {
+                    val thread = data.getJSONObject(i)
+                    val name = thread.optString("name").takeUnless { it.isBlank() || it == "null" }
+                    val preview = thread.optString("preview").lineSequence().firstOrNull().orEmpty().take(100)
+                    found += RecentProject(thread.optString("id"), thread.optString("cwd"),
+                        name ?: preview.ifBlank { "Untitled conversation" }, thread.optLong("updatedAt"))
+                }
+                val latest = RecentProjects.latest(found)
+                val next = result.optString("nextCursor").takeUnless { it.isBlank() || it == "null" }
+                if (latest.size < 5 && next != null && number < 20) page(next, number + 1)
+                else {
+                    recentProjects = latest; loadingProjects = false
+                    if (next != null && latest.size < 5) projectsError = "Showing projects found in the latest 2,000 conversations."
+                    changed()
+                }
+            }
         }
+        page(null, 1)
+    }
+
+    fun resumeProject(project: RecentProject) {
+        check(connected && !running && requests.isEmpty()) { "Finish the current task or approvals before switching projects." }
+        check(recentProjects.any { it.threadId == project.threadId && it.cwd == project.cwd }) { "Refresh the recent projects list first." }
+        connect(project)
     }
 
     fun submit(text: String) {
-        check(connected && !running) { "Connect your computer and wait for the current task to finish" }
+        check(connected && !running && !readOnly && !loadingHistory) { "Open an editable conversation and wait for history and the current task to finish." }
         val id = checkNotNull(threadID)
+        if (question.isNotBlank()) history = (history + ChatRecord(question, answer)).takeLast(30)
         question = text; answer = ""; messages.clear(); running = true; status = "Computer is working…"; changed()
         rpc("turn/start", JSONObject().put("threadId", id).put("input", JSONArray().put(JSONObject().put("type", "text").put("text", text)))) {
             turnID = it.getJSONObject("turn").getString("id")
@@ -114,8 +205,11 @@ internal class CodexClient(private val settings: AppSettings, private val change
     private fun receive(message: JSONObject) {
         if (message.has("id") && !message.has("method")) {
             val callback = pending.remove(message.getInt("id")) ?: return
-            if (message.has("error")) { running = false; status = "Codex：${message.getJSONObject("error").optString("message")}"; changed() }
-            else callback(message.optJSONObject("result") ?: JSONObject())
+            if (message.has("error")) {
+                val error = message.getJSONObject("error").optString("message")
+                if (callback.failed != null) callback.failed.invoke(error)
+                else { running = false; status = "Codex: $error"; changed() }
+            } else callback.complete(message.optJSONObject("result") ?: JSONObject())
             return
         }
         val method = message.optString("method")
@@ -171,14 +265,17 @@ internal class CodexClient(private val settings: AppSettings, private val change
             answer = messages.values.joinToString("\n\n").takeLast(24000)
         }
     }
-    private fun rpc(method: String, params: JSONObject, complete: (JSONObject) -> Unit) {
-        val id = ++nextID; pending[id] = complete
+    private fun rpc(method: String, params: JSONObject, onError: ((String) -> Unit)? = null, complete: (JSONObject) -> Unit) {
+        val id = ++nextID; pending[id] = Pending(complete, onError)
         if (socket?.send(JSONObject().put("id", id).put("method", method).put("params", params).toString()) != true) {
             pending.remove(id); disconnected("Computer unavailable. Reconnect to check its status."); return
         }
-        main.postDelayed({ if (pending.remove(id) != null) { status = "Computer request timed out: $method; reconnect to check status"; connected = false; changed() } }, 30_000)
+        main.postDelayed({ pending.remove(id)?.let { request ->
+            if (request.failed != null) request.failed.invoke("Computer request timed out: $method. Retry or reconnect.")
+            else { status = "Computer request timed out: $method; reconnect to check status"; connected = false; changed() }
+        } }, 30_000)
     }
     private fun send(message: JSONObject) { check(socket?.send(message.toString()) == true) { "Computer connection unavailable" } }
-    private fun disconnected(message: String) { connected = false; pending.clear(); requests.clear(); status = message; changed() }
-    fun close() { generation++; socket?.cancel(); socket = null; running = false; turnID = null; items.clear(); disconnected("Computer not connected") }
+    private fun disconnected(message: String) { connected = false; loadingProjects = false; pending.clear(); requests.clear(); status = message; changed() }
+    fun close() { generation++; socket?.cancel(); socket = null; running = false; readOnly = false; loadingHistory = false; turnID = null; items.clear(); disconnected("Computer not connected") }
 }

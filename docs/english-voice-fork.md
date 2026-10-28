@@ -121,6 +121,33 @@ word or speaker-authentication system. Raw audio is processed in memory and not
 recorded by the helper. Final submitted text uses Codex's normal history/data
 handling. Do not rely on voice alone for critical tasks or authorization.
 
+## Recent projects and conversation reading (latest source)
+
+Computer Codex is the default assistant. After connecting, **Recent projects** opens
+a full-width picker showing five distinct local working folders in most-recently
+updated order, with the latest conversation for each. Selecting a project loads up
+to 20 recent turns in chronological order and resumes that conversation when the
+PC app-server can acquire it. Project names, titles, paths, and timestamps are
+shown separately; long paths are ellipsized. Voice instructions collapse behind
+Help after selection, leaving compact controls and the conversation.
+
+A conversation held by a desktop Codex process can reject resume with an active
+writer error. In that case the phone loads its history in read-only mode rather
+than silently failing. **Continue a copy** explicitly creates a separate continuation;
+it does not take over or modify the desktop conversation. Submitting tasks and
+glasses voice are disabled while viewing a read-only chat or loading history.
+
+With the glasses connected, a loaded conversation's latest assistant reply is sent
+to the existing prompt page under a short Codex heading. Computer replies remain
+visible rather than automatically restoring navigation after 12 seconds. A later
+reply, explicit dismissal, display pause, or disconnect can replace/end the display.
+The protocol sends a complete final message, but **native crown scrolling through
+long replies has not yet been verified by the wearer**. Do not describe scrollability
+as a confirmed feature. The clipped native waiting placeholder also remains.
+
+These updates are on the default source branch. The first prerelease APK predates
+them; rebuilding the current branch is required until a newer APK release is made.
+
 ## Quick app switching
 
 In the **Glasses** tab:
@@ -172,7 +199,7 @@ Foojay settings from the development machine are not part of this fork's changes
   the wearer. This is functional validation, not a measured accuracy/latency study.
 - Official app switch opened RayNeo and restored permission; return switch
   re-established OpenRayneo BLE/RFCOMM and audio.
-- Seven Python endpoint tests and eight Android unit tests pass. Release lint has
+- Seven Python endpoint tests and 20 Android unit tests pass. Release lint has
   zero errors and 15 existing warnings. Both build variants were built during
   development; see release notes for the final prerelease checks.
 

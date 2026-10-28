@@ -31,6 +31,13 @@ internal data class CompanionState(
     val computerRunning: Boolean = false,
     val computerStatus: String = "Computer not connected",
     val computerConnected: Boolean = false,
+    val computerReadOnly: Boolean = false,
+    val loadingComputerHistory: Boolean = false,
+    val recentComputerProjects: List<RecentProject> = emptyList(),
+    val loadingComputerProjects: Boolean = false,
+    val computerProjectsError: String? = null,
+    val computerProject: String = "",
+    val computerThreadTitle: String = "",
     val glassesVoiceActive: Boolean = false,
     val glassesVoiceStatus: String = "Glasses voice off",
     val glassesVoiceTranscript: String = "",
@@ -138,9 +145,15 @@ internal class AppModel(application: Application) : AndroidViewModel(application
     }
 
     fun service(): BridgeService = checkNotNull(bridge) { "Connection service is starting. Try again shortly." }
+    fun resumeComputerProject(project: RecentProject) {
+        service().resumeCodexProject(project)
+        computerHistory = emptyList()
+        computerDraft = ""
+    }
 
     private fun refresh() {
         val s = bridge ?: return
+        computerHistory = s.codex.history
         state =
             CompanionState(
                 available = true,
@@ -158,6 +171,13 @@ internal class AppModel(application: Application) : AndroidViewModel(application
                 computerRunning = s.codex.running,
                 computerStatus = s.codex.status,
                 computerConnected = s.codex.connected,
+                computerReadOnly = s.codex.readOnly,
+                loadingComputerHistory = s.codex.loadingHistory,
+                recentComputerProjects = s.codex.recentProjects,
+                loadingComputerProjects = s.codex.loadingProjects,
+                computerProjectsError = s.codex.projectsError,
+                computerProject = s.codex.currentProject,
+                computerThreadTitle = s.codex.currentThreadTitle,
                 glassesVoiceActive = s.voice.active,
                 glassesVoiceStatus = s.voice.status,
                 glassesVoiceTranscript = s.voice.transcript,
@@ -257,7 +277,6 @@ internal class AppModel(application: Application) : AndroidViewModel(application
             if (old.question.isNotBlank()) phoneHistory = (phoneHistory + old).takeLast(30)
             phoneDraft = ""
         } else {
-            if (old.question.isNotBlank()) computerHistory = (computerHistory + old).takeLast(30)
             computerDraft = ""
         }
     }

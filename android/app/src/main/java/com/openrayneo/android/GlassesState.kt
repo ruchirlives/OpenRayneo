@@ -4,7 +4,7 @@ package com.openrayneo.android
 
 internal enum class AnswerSource { MOBILE_AGENT, COMPUTER_CODEX }
 internal data class AnswerRef(val source: AnswerSource, val taskId: Long)
-internal data class AnswerContent(val ref: AnswerRef, val question: String, val text: String)
+internal data class AnswerContent(val ref: AnswerRef, val question: String, val text: String, val keepVisible: Boolean = false)
 internal enum class ReturnTarget { IDLE, PROMPT_STANDBY, NAVIGATION }
 internal sealed interface DisplayIntent {
     data object Idle : DisplayIntent

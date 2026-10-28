@@ -14,6 +14,9 @@ Bluetooth protocol work and macOS implementation remain the foundation.
   using the PC helper, preserving pairing, account binding, and app data.
 - Fix for Android delivering an MTU callback before Bluetooth service discovery,
   including regression tests for early and duplicate callbacks.
+- Computer Codex selected by default, a recent-project picker, conversation history,
+  and compact controls after choosing a chat. Latest replies can be shown on the
+  glasses and kept visible; native crown scrolling still needs wearer verification.
 
 **Working in our phone/glasses test:** English interface, spoken requests through
 the glasses' microphone, Codex replies displayed on the glasses, and switching

@@ -4,6 +4,8 @@ package com.openrayneo.android
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,7 +31,10 @@ import org.json.JSONObject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (String) -> Unit) {
-    var mobile by rememberSaveable { mutableStateOf(true) }
+    var mobile by rememberSaveable { mutableStateOf(false) }
+    var projectsOpen by remember { mutableStateOf(false) }
+    var compactComputerSession by rememberSaveable { mutableStateOf(false) }
+    var showVoiceHelp by remember { mutableStateOf(false) }
     val source = if (mobile) AnswerSource.MOBILE_AGENT else AnswerSource.COMPUTER_CODEX
     val s = model.state
     val running = if (mobile) s.phoneRunning else s.computerRunning
@@ -44,7 +49,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
             }
         else listOf("codexUrl", "codexToken").all { model.config.optString(it).isNotBlank() }
     val draft = if (mobile) model.phoneDraft else model.computerDraft
-    val inputReady = s.available && configured && (mobile || s.computerConnected) && !running
+    val inputReady = s.available && configured && (mobile || s.computerConnected && !s.computerReadOnly && !s.loadingComputerHistory) && !running
     val phoneList = rememberLazyListState()
     val computerList = rememberLazyListState()
     val list = if (mobile) phoneList else computerList
@@ -58,6 +63,40 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
         withFrameNanos {}
         if (followLatest && list.layoutInfo.totalItemsCount > 0)
             list.scrollToItem(list.layoutInfo.totalItemsCount - 1)
+    }
+    if (projectsOpen) ModalBottomSheet(onDismissRequest = { projectsOpen = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recent projects", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                    TextButton(enabled = !s.loadingComputerProjects && s.computerConnected && !s.computerRunning,
+                        onClick = { model.attempt { model.service().codex.refreshRecentProjects() } }) { Text("Refresh") }
+                }
+                Note("Latest conversation in each project")
+                if (s.loadingComputerProjects) LinearProgressIndicator(Modifier.fillMaxWidth())
+                s.computerProjectsError?.let { Note(it) }
+                if (!s.loadingComputerProjects && s.recentComputerProjects.isEmpty()) Note("No recent projects found on this computer.")
+                s.recentComputerProjects.forEach { project ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !s.loadingComputerProjects && s.computerConnected && !s.computerRunning && s.approvals.isEmpty(),
+                        onClick = { model.attempt {
+                            model.resumeComputerProject(project)
+                            compactComputerSession = true
+                            showVoiceHelp = false
+                            projectsOpen = false
+                        } },
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(project.name, style = MaterialTheme.typography.titleMedium)
+                            Text(project.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(project.cwd, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                                .format(java.util.Date(project.updatedAt * 1000)), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
     }
     Column(Modifier.fillMaxSize().imePadding()) {
         SingleChoiceSegmentedButtonRow(
@@ -107,13 +146,49 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                 Icon(Icons.Outlined.AddComment, "New conversation")
             }
         }
+        if (!mobile && s.computerConnected) Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(s.computerProject, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (s.computerThreadTitle.isNotBlank()) Text(s.computerThreadTitle, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+            TextButton(enabled = !running && s.approvals.isEmpty(), onClick = { model.attempt {
+                model.service().codex.refreshRecentProjects(); projectsOpen = true
+            } }) { Text("Recent projects") }
+        }
         LazyColumn(
             state = list,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            if (!mobile && configured)
+            if (!mobile && s.computerConnected && s.computerReadOnly) item {
+                ContentCard {
+                    Text("Viewing desktop chat", style = MaterialTheme.typography.titleSmall)
+                    Note("Desktop Codex owns this conversation. Read it here, or continue in a separate copy; the original stays unchanged.")
+                    ToolButton(enabled = !s.loadingComputerHistory, onClick = { model.attempt {
+                        model.service().codex.forkViewedThread()
+                    } }) { Text("Continue a copy") }
+                }
+            }
+            if (!mobile && s.loadingComputerHistory) item {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Note("Loading conversation…")
+            }
+            if (!mobile && configured && compactComputerSession && !showVoiceHelp) item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Glasses voice", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    TextButton(enabled = s.available && (s.glassesVoiceActive || s.computerConnected && !s.computerReadOnly && !s.loadingComputerHistory && !running && s.approvals.isEmpty() && s.glasses.link.phase == LinkPhase.FULL),
+                        onClick = { model.attempt {
+                            if (s.glassesVoiceActive) model.service().stopGlassesVoice() else model.service().startGlassesVoice()
+                        } }) { Text(if (s.glassesVoiceActive) "Stop" else "Start") }
+                    TextButton(onClick = { showVoiceHelp = true }) { Text("Help") }
+                }
+                if (s.glassesVoiceActive) Text(s.glassesVoiceStatus, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+            }
+            if (!mobile && configured && (!compactComputerSession || showVoiceHelp))
                 item {
                     ContentCard {
                         Text("Glasses voice control", style = MaterialTheme.typography.titleMedium)
@@ -126,9 +201,10 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                                 else model.service().startGlassesVoice()
                             } },
                             enabled = s.available && (s.glassesVoiceActive ||
-                                (s.computerConnected && !running && s.approvals.isEmpty() && s.glasses.link.phase == LinkPhase.FULL)),
+                                (s.computerConnected && !s.computerReadOnly && !s.loadingComputerHistory && !running && s.approvals.isEmpty() && s.glasses.link.phase == LinkPhase.FULL)),
                         ) { Text(if (s.glassesVoiceActive) "Stop glasses voice" else "Start glasses voice") }
                         Note("Say Codex, stop listening to disable transcription. Listening pauses while Codex works and stops when the glasses disconnect or you pause their display.")
+                        if (compactComputerSession) TextButton(onClick = { showVoiceHelp = false }) { Text("Hide help") }
                     }
                 }
             if (!configured)
@@ -157,7 +233,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                 item {
                     ContentCard {
                         Text("Connect to computer Codex", style = MaterialTheme.typography.titleLarge)
-                        Note("Keep the connection script running on your computer. USB mode needs a data cable and port forwarding.")
+                        if (!compactComputerSession) Note("Keep the connection script running on your computer. USB mode needs a data cable and port forwarding.")
                         ToolButton(
                             onClick = { model.attempt { model.service().connectCodex() } },
                             enabled = s.available,
@@ -167,7 +243,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                         TextButton(onClick = { configure("computer") }) { Text("Check connection settings") }
                     }
                 }
-            else if (question.isBlank() && history.isEmpty())
+            else if (question.isBlank() && history.isEmpty() && (mobile || !s.loadingComputerHistory))
                 item {
                     Column(
                         Modifier.fillMaxWidth().padding(vertical = 36.dp),
@@ -180,12 +256,12 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                             Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary,
                         )
-                        Text("New conversation", style = MaterialTheme.typography.headlineSmall)
-                        Note(if (mobile) "Try asking: What is the glasses navigation status?" else "Enter a task for Codex on your computer.")
+                        Text(if (!mobile && s.computerReadOnly) "No messages loaded" else "New conversation", style = MaterialTheme.typography.headlineSmall)
+                        if (!compactComputerSession || mobile) Note(if (mobile) "Try asking: What is the glasses navigation status?" else "Enter a task for Codex on your computer.")
                     }
                 }
             history.forEach { record -> item { ConversationTurn(record.question, record.answer) } }
-            if (question.isNotBlank())
+            if (question.isNotBlank() || answer.isNotBlank())
                 item {
                     ConversationTurn(question, answer)
                     if (running) {
@@ -313,7 +389,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
 @Composable
 private fun ConversationTurn(question: String, answer: String) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Surface(
+        if (question.isNotBlank()) Surface(
             modifier = Modifier.align(Alignment.End).widthIn(max = 320.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
             shape = MaterialTheme.shapes.medium,

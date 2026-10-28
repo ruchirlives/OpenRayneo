@@ -42,6 +42,7 @@ internal class BridgeService : Service() {
     private var closeTask: Runnable? = null
     private var audioOwner: Long? = null
     private var nextAnswer = 0L
+    private var showLoadedHistory = false
     private val pendingAnswers = mutableMapOf<AnswerSource, AnswerPermit>()
     private var notificationText = ""
     private var notificationReadStatus = ""
@@ -62,7 +63,7 @@ internal class BridgeService : Service() {
         override fun run() {
             audioOwner?.let { dispatch(GlassesEvent.AudioChanged(it, audio.state.coordinatorState())) }
             if (voice.active) {
-                val canListen = codex.connected && !codex.running && codex.requests.isEmpty() &&
+                val canListen = codex.connected && !codex.running && !codex.readOnly && !codex.loadingHistory && codex.requests.isEmpty() &&
                     state.link.phase == LinkPhase.FULL && state.session?.mode == PageMode.PROMPT &&
                     state.session?.phase == PagePhase.READY && state.ownership == DisplayOwnership.APP
                 voice.readiness(canListen, if (codex.running) "Codex is working; listening paused."
@@ -93,7 +94,13 @@ internal class BridgeService : Service() {
         navigation.initialize(this)
         navigation.observers.add(navigationObserver)
         agent = MobileAgent(settings, ::notifyUI, ::executeTool) { question, answer -> completed(AnswerSource.MOBILE_AGENT, question, answer) }
-        codex = CodexClient(settings, ::notifyUI) { question, answer -> completed(AnswerSource.COMPUTER_CODEX, question, answer) }
+        codex = CodexClient(settings, ::notifyUI, historyReady = {
+            if (showLoadedHistory && state.link.phase == LinkPhase.FULL && !state.disconnecting &&
+                state.ownership == DisplayOwnership.APP && codex.answer.isNotBlank()) {
+                showLoadedHistory = false
+                revealAnswer(AnswerSource.COMPUTER_CODEX)
+            }
+        }) { question, answer -> completed(AnswerSource.COMPUTER_CODEX, question, answer) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("bridge", "Glasses connection and navigation", NotificationManager.IMPORTANCE_LOW))
         initialized = true
@@ -127,6 +134,11 @@ internal class BridgeService : Service() {
                 val transition = GlassesCoordinator.reduce(state, events.removeFirst())
                 val previous = state
                 state = transition.state
+                if (event is GlassesEvent.LinkChanged && state.link.phase == LinkPhase.FULL && showLoadedHistory &&
+                    initialized && codex.connected && !codex.loadingHistory && codex.answer.isNotBlank()) {
+                    showLoadedHistory = false
+                    events.add(GlassesEvent.RevealAnswer(AnswerContent(AnswerRef(AnswerSource.COMPUTER_CODEX, ++nextAnswer), "Codex", codex.answer, true)))
+                }
                 if (voice.active && (state.link.phase != LinkPhase.FULL || state.disconnecting ||
                         state.ownership == DisplayOwnership.YIELDED || state.intent == DisplayIntent.Idle ||
                         state.session?.mode == PageMode.NAVIGATION)) voice.stop()
@@ -207,9 +219,9 @@ internal class BridgeService : Service() {
         val key = navigation.selectedKey ?: error("Select an Amap notification to follow first")
         followNavigation(key)
     }
-    fun pausePrompt() { voice.stop(); dispatch(GlassesEvent.PauseDisplay) }
+    fun pausePrompt() { showLoadedHistory = false; voice.stop(); dispatch(GlassesEvent.PauseDisplay) }
     fun startGlassesVoice() {
-        check(codex.connected && !codex.running && codex.requests.isEmpty()) { "Connect computer Codex and finish pending tasks or approvals first." }
+        check(codex.connected && !codex.running && !codex.readOnly && !codex.loadingHistory && codex.requests.isEmpty()) { "Open an editable Codex chat and finish loading, tasks, or approvals first." }
         check(state.link.phase == LinkPhase.FULL && !state.disconnecting) { "Connect glasses fully first." }
         dispatch(GlassesEvent.OpenStandby)
         voice.start(settings.read())
@@ -254,15 +266,21 @@ internal class BridgeService : Service() {
         dispatch(GlassesEvent.CancelAnswer(source))
     }
     fun clearAgent() { invalidateAnswer(AnswerSource.MOBILE_AGENT); agent.clear() }
-    fun connectCodex() { invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.connect() }
-    fun closeCodex() { voice.stop(); invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.close() }
+    fun connectCodex() { showLoadedHistory = true; invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.connect() }
+    fun closeCodex() { showLoadedHistory = false; voice.stop(); invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.close() }
+    fun resumeCodexProject(project: RecentProject) {
+        check(codex.connected && !codex.running && codex.requests.isEmpty()) { "Finish tasks and approvals before switching projects." }
+        voice.stop(); invalidateAnswer(AnswerSource.COMPUTER_CODEX)
+        showLoadedHistory = true
+        codex.resumeProject(project)
+    }
     fun newCodexConversation() {
         check(!codex.running) { "End the current computer task first" }
         invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.newConversation()
     }
     private fun completed(source: AnswerSource, question: String, text: String) {
         val permit = pendingAnswers.remove(source) ?: return
-        if (text.isNotBlank()) dispatch(GlassesEvent.AnswerCompleted(AnswerContent(permit.ref, question, text), permit))
+        if (text.isNotBlank()) dispatch(GlassesEvent.AnswerCompleted(AnswerContent(permit.ref, question, text, source == AnswerSource.COMPUTER_CODEX), permit))
     }
     fun revealAnswer(source: AnswerSource) {
         check(state.link.phase == LinkPhase.FULL && !state.disconnecting) { "Establish a full glasses connection first" }
@@ -271,7 +289,7 @@ internal class BridgeService : Service() {
             AnswerSource.COMPUTER_CODEX -> codex.question to codex.answer
         }
         require(answer.isNotBlank()) { "No answer to display yet" }
-        dispatch(GlassesEvent.RevealAnswer(AnswerContent(AnswerRef(source, ++nextAnswer), question, answer)))
+        dispatch(GlassesEvent.RevealAnswer(AnswerContent(AnswerRef(source, ++nextAnswer), question, answer, source == AnswerSource.COMPUTER_CODEX)))
     }
     private fun navigationSnapshot() = NavigationState(navigation.enabled, navigation.selectedKey, navigation.frame)
     private fun executeTool(name: String, args: JSONObject, completion: (Result<JSONObject>) -> Unit) {

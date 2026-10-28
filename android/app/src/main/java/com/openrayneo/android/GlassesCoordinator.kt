@@ -124,7 +124,7 @@ internal object GlassesCoordinator {
                             state = state.copy(session = session.copy(writtenContent = signal.content,
                                 phase = if (latest) PagePhase.READY else session.phase))
                             val answer = state.intent as? DisplayIntent.Answer
-                            if (latest && answer?.returnTo == ReturnTarget.NAVIGATION && state.navigation.enabled && state.restoreRevision != state.revision) {
+                            if (latest && answer?.returnTo == ReturnTarget.NAVIGATION && state.answer?.keepVisible != true && state.navigation.enabled && state.restoreRevision != state.revision) {
                                 cancelRestore()
                                 state = state.copy(restoreRevision = state.revision)
                                 effects += GlassesEffect.ScheduleRestore(session.id, state.revision, answer.ref)
@@ -194,7 +194,8 @@ internal object GlassesCoordinator {
                 PageMode.NAVIGATION to PageContent("navigation", it)
             }
             is DisplayIntent.Answer -> state.answer?.takeIf { it.ref == intent.ref }?.let {
-                PageMode.PROMPT to PageContent("${it.ref.source}:${it.ref.taskId}", it.question.ifBlank { "Agent" }, it.text)
+                PageMode.PROMPT to PageContent("${it.ref.source}:${it.ref.taskId}",
+                    if (it.ref.source == AnswerSource.COMPUTER_CODEX) "Codex" else it.question.ifBlank { "Agent" }, it.text)
             }
         }
     }
