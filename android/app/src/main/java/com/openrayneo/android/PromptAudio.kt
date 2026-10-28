@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.log10
 import kotlin.math.sqrt
 
-/** Decodes caption or prompt Opus streams. PCM is consumed on this worker, never stored or uploaded. */
+/** Decodes caption or prompt Opus streams. PCM is consumed on this worker; optional voice mode forwards bounded channel-1 speech to the paired PC. */
 internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit = { _, _ -> }) {
     data class State(
         val active: Boolean = false, val channels: Int = 2, val packets: Long = 0, val samples: Long = 0,
@@ -23,14 +23,14 @@ internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit
         val dropped: Int = 0, val error: String? = null
     ) {
         fun summary(): String {
-            if (!active) return "眼镜收音已停止"
-            if (error != null) return "眼镜音频：$error"
-            if (receivedPackets == 0L) return "音频会话已确认，等待首个眼镜音频包"
-            if (lastAudio == 0L) return "已收到 $receivedPackets 包音频，等待解码输出"
-            if (SystemClock.elapsedRealtime() - lastAudio > 3_000) return "眼镜音频已中断，导航显示可继续"
-            fun db(value: Double) = if (value <= 0.00001) "静音" else "${(20 * log10(value)).toInt()} dBFS"
-            val levels = if (channels == 1) "眼镜单声道 · ${db(left)}" else "眼镜双声道 · 通道 1 ${db(left)} · 通道 2 ${db(right)}"
-            return "$levels\n已解码 ${samples / 48_000} 秒 · 丢弃 $dropped 包"
+            if (!active) return "Glasses audio stopped"
+            if (error != null) return "Glasses audio: $error"
+            if (receivedPackets == 0L) return "Audio session confirmed; waiting for the first glasses audio packet"
+            if (lastAudio == 0L) return "Received $receivedPackets audio packets; waiting for decoded output"
+            if (SystemClock.elapsedRealtime() - lastAudio > 3_000) return "Glasses audio interrupted; navigation display can continue"
+            fun db(value: Double) = if (value <= 0.00001) "Silent" else "${(20 * log10(value)).toInt()} dBFS"
+            val levels = if (channels == 1) "Glasses mono · ${db(left)}" else "Glasses stereo · Channel 1 ${db(left)} · Channel 2 ${db(right)}"
+            return "$levels\nDecoded ${samples / 48_000} seconds · Dropped $dropped packets"
         }
         fun coordinatorState(): AudioState {
             val phase = when {
@@ -83,7 +83,7 @@ internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit
                 timestamp = 0; outputChannels = channels; outputRate = 48_000; outputEncoding = AudioFormat.ENCODING_PCM_16BIT
             } catch (error: Exception) {
                 release()
-                publish(current) { it.copy(error = "解码器启动失败：${error.message}") }
+                publish(current) { it.copy(error = "Decoder startup failed: ${error.message}") }
             }
         }
     }
@@ -99,7 +99,7 @@ internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit
                 val decoder = codec ?: return@post
                 // The Opus TOC stereo bit describes encoded channels; do not duplicate mono into two sources.
                 if (decodeChannels == 2 && packet[0].toInt() and 4 == 0) {
-                    publish(current) { it.copy(error = "收到单声道数据，等待眼镜恢复双声道", left = 0.0, right = 0.0) }
+                    publish(current) { it.copy(error = "Mono audio received; waiting for glasses stereo audio", left = 0.0, right = 0.0) }
                     return@post
                 }
                 val duration = packetDurationUs(packet)
@@ -113,7 +113,7 @@ internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit
                 drain(decoder, current)
             } catch (error: Exception) {
                 release()
-                publish(current) { it.copy(error = "音频解码失败，请重启音频解码：${error.message}") }
+                publish(current) { it.copy(error = "Audio decoding failed. Restart the decoder: ${error.message}") }
             } finally { queued.decrementAndGet() }
         }
     }
@@ -129,7 +129,7 @@ internal class PromptAudio(private val consume: (ShortArray, ShortArray) -> Unit
                 outputEncoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) format.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
             } else if (index >= 0) {
                 try {
-                    check(outputChannels == decodeChannels && outputRate == 48_000 && outputEncoding == AudioFormat.ENCODING_PCM_16BIT) { "解码输出与请求的 PCM16 格式不符" }
+                    check(outputChannels == decodeChannels && outputRate == 48_000 && outputEncoding == AudioFormat.ENCODING_PCM_16BIT) { "Decoder output does not match the requested PCM16 format" }
                     if (info.size == 0) continue
                     val pcm = decoder.getOutputBuffer(index)!!.order(ByteOrder.LITTLE_ENDIAN)
                     pcm.position(info.offset); pcm.limit(info.offset + info.size)

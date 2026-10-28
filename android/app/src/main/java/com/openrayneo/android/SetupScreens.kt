@@ -35,14 +35,14 @@ internal fun OnboardingScreen(
     val step = model.onboardingStep
     val scroll = rememberScrollState()
     LaunchedEffect(step) { scroll.scrollTo(0) }
-    val titles = listOf("开始使用 OpenRayneo", "连接眼镜", "开启导航跟随", "配置助手", "检查设置")
+    val titles = listOf("Get started with OpenRayneo", "Connect glasses", "Enable navigation following", "Set up your assistant", "Review setup")
     val subtitles =
         listOf(
-            "欢迎使用 OpenRayneo。用几步完成设置，也可以稍后继续。",
-            "用手机直接连接 RayNeo iO，导航与回答便能显示在眼前。",
-            "路线由高德规划，OpenRayneo 读取通知，把方向、距离与路名带到眼镜。",
-            "手机可以独立调用模型；电脑在线时，也可以把任务交给 Codex。两项都可稍后配置。",
-            "下面是当前准备情况。未完成的项目随时可以在设置中继续。",
+            "Welcome to OpenRayneo. Set up in a few steps, or continue later.",
+            "Connect your phone directly to RayNeo iO to see navigation and answers in your glasses.",
+            "Amap plans your route. OpenRayneo reads its notifications and sends directions, distances, and road names to your glasses.",
+            "Use a model directly from your phone, or send tasks to Codex while your computer is online. Both can be configured later.",
+            "Review your setup below. You can finish any remaining steps in Settings.",
         )
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -51,7 +51,7 @@ internal fun OnboardingScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("OpenRayneo", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = model::finishSetup) { Text("稍后设置") }
+            TextButton(onClick = model::finishSetup) { Text("Set up later") }
         }
         LinearProgressIndicator(
             progress = { (step + 1) / 5f },
@@ -62,7 +62,7 @@ internal fun OnboardingScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "开始使用 · ${step + 1} / 5",
+                "Getting started · ${step + 1} / 5",
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -74,9 +74,9 @@ internal fun OnboardingScreen(
                         Modifier.fillMaxWidth().height(90.dp),
                         MaterialTheme.colorScheme.primary,
                     )
-                    SetupRow(Icons.Outlined.NearMe, "抬眼看导航", "跟随手机高德的真实导航通知")
-                    SetupRow(Icons.Outlined.AutoAwesome, "随时问助手", "连接你自己的模型与电脑 Codex")
-                    SetupRow(Icons.Outlined.Tune, "由你掌控", "显示与收音可以随时暂停")
+                    SetupRow(Icons.Outlined.NearMe, "Navigation at a glance", "Follow live Amap notifications from your phone")
+                    SetupRow(Icons.Outlined.AutoAwesome, "Ask your assistant", "Connect your own model and computer Codex")
+                    SetupRow(Icons.Outlined.Tune, "You are in control", "Pause display and audio at any time")
                 }
                 1 -> {
                     ContentCard {
@@ -85,102 +85,102 @@ internal fun OnboardingScreen(
                             MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            if (model.state.glasses.link.phase == LinkPhase.FULL) "眼镜已连接"
-                            else "连接前的小准备",
+                            if (model.state.glasses.link.phase == LinkPhase.FULL) "Glasses connected"
+                            else "Before you connect",
                             style = MaterialTheme.typography.titleLarge,
                         )
-                        Note("1. 唤醒眼镜并靠近手机\n2. 断开官方 App 或电脑的眼镜连接\n3. 在手机上确认系统配对提示")
+                        Note("1. Wake your glasses and keep them near your phone\n2. Disconnect them from the official app or computer\n3. Confirm the pairing prompt on your phone")
                         ToolButton(onClick = connect, modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                if (model.state.glasses.link.phase == LinkPhase.FULL) "查看连接"
-                                else "连接眼镜"
+                                if (model.state.glasses.link.phase == LinkPhase.FULL) "View connection"
+                                else "Connect glasses"
                             )
                         }
                     }
-                    Note("只在连接时申请“附近设备”权限。未连接也可以先配置助手。")
+                    Note("Nearby Devices permission is requested when connecting. You can set up your assistant before connecting.")
                 }
                 2 -> {
                     ContentCard {
                         Text(
-                            if (model.notificationAllowed) "通知使用权已开启" else "允许读取高德导航通知",
+                            if (model.notificationAllowed) "Notification access enabled" else "Allow Amap notification access",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         if (model.notificationAllowed) Note(model.state.notificationReadStatus)
-                        Note("系统会授予通知使用权，应用只处理高德导航通知。通知正文不会发送给模型。")
+                        Note("Android grants notification access; this app only processes Amap navigation notifications. Notification text is not sent to the model.")
                         ToolOutlinedButton(
                             onClick = actions.notificationAccess,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (model.notificationAllowed) "查看通知权限" else "前往开启通知使用权")
+                            Text(if (model.notificationAllowed) "View notification permission" else "Enable notification access")
                         }
                     }
                     var example by rememberSaveable { mutableIntStateOf(0) }
                     val samples =
                         listOf(
-                            Triple("直行", 300, "沿中山路"),
-                            Triple("右转", 80, "进入人民路"),
-                            Triple("左转", 20, "沿滨河路"),
+                            Triple("直行", 300, "Along Main Road"),
+                            Triple("右转", 80, "Enter Park Road"),
+                            Triple("左转", 20, "Along River Road"),
                         )
                     val sample = samples[example]
                     GridPreview(
                         NavigationFrame.render(sample.first, sample.second, sample.third),
-                        "演示 · 与眼镜相同的导航网格",
+                        "Demo · Same navigation grid as the glasses",
                     )
                     TextButton(onClick = { example = (example + 1) % samples.size }) {
-                        Text("切换演示指令")
+                        Text("Change demo direction")
                     }
-                    Note("以上是界面演示，不会发送到眼镜或启动导航。真实导航请在高德 App 中开始。")
+                    Note("This is a preview. It does not send anything to the glasses or start navigation. Start real navigation in Amap.")
                 }
                 3 -> {
                     SetupOption(
-                        "手机模型",
-                        "填写服务地址、模型名与 API Key。使用你自己的模型服务。",
+                        "Phone model",
+                        "Enter your service URL, model name, and API key to use your own model service.",
                         model.config.optString("modelKey").isNotBlank(),
                         Icons.Outlined.Smartphone,
                     ) {
                         configure("model")
                     }
                     SetupOption(
-                        "电脑 Codex",
-                        "导入电脑生成的配置文件，或填写连接参数。USB 联调需电脑开启转发。",
+                        "Computer Codex",
+                        "Import the configuration generated on your computer, or enter connection details. USB mode requires port forwarding.",
                         model.config.optString("codexToken").isNotBlank(),
                         Icons.Outlined.Computer,
                     ) {
                         configure("computer")
                     }
-                    Note("“已保存”只表示填写了配置。真实连接结果会在助手页显示。手机语音输入目前使用手机的识别服务。")
+                    Note("Saved means settings were entered. Check actual connection results in Assistant. Voice input uses your phone's speech service.")
                 }
                 4 -> {
                     ContentCard {
                         CompletionRow(
-                            "眼镜连接",
+                            "Glasses connection",
                             model.state.glasses.link.phase == LinkPhase.FULL,
-                            "已连接",
-                            "稍后连接",
+                            "Connected",
+                            "Connect later",
                         )
-                        CompletionRow("导航通知权限", model.notificationAllowed, "已开启", "稍后授权")
+                        CompletionRow("Navigation notification access", model.notificationAllowed, "Enabled", "Allow later")
                         CompletionRow(
-                            "手机模型",
+                            "Phone model",
                             model.config.optString("modelKey").isNotBlank(),
-                            "已保存配置",
-                            "可选，稍后配置",
+                            "Settings saved",
+                            "Optional; set up later",
                         )
                         CompletionRow(
-                            "电脑 Codex",
+                            "Computer Codex",
                             model.config.optString("codexToken").isNotBlank(),
-                            "已保存配置",
-                            "可选，稍后配置",
+                            "Settings saved",
+                            "Optional; set up later",
                         )
                     }
                     if (!model.backgroundNotifications)
                         ContentCard {
-                            Text("在后台也能看到连接状态", style = MaterialTheme.typography.titleMedium)
-                            Note("允许状态通知后，可在系统通知栏查看眼镜连接并停止服务。")
+                            Text("See connection status in the background", style = MaterialTheme.typography.titleMedium)
+                            Note("Allow status notifications to view the connection and stop the service from the notification shade.")
                             ToolOutlinedButton(onClick = actions.notificationPermission) {
-                                Text("允许状态通知")
+                                Text("Allow status notifications")
                             }
                         }
-                    Note("在“设置 → 再看一次使用引导”中，随时回到这里。")
+                    Note("Return here anytime from Settings → Show setup guide.")
                 }
             }
         }
@@ -189,12 +189,12 @@ internal fun OnboardingScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (step > 0) ToolOutlinedButton(onClick = { model.step(step - 1) }) { Text("上一步") }
+            if (step > 0) ToolOutlinedButton(onClick = { model.step(step - 1) }) { Text("Back") }
             ToolButton(
                 onClick = { if (step == 4) model.finishSetup() else model.step(step + 1) },
                 modifier = Modifier.weight(1f).heightIn(min = 52.dp),
             ) {
-                Text(if (step == 0) "开始设置" else if (step == 4) "进入 OpenRayneo" else "继续")
+                Text(if (step == 0) "Start setup" else if (step == 4) "Open OpenRayneo" else "Continue")
             }
         }
     }
@@ -226,9 +226,9 @@ private fun SetupOption(
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
         Text(title, style = MaterialTheme.typography.titleLarge)
         Note(description)
-        if (saved) StatusPill("已保存配置")
+        if (saved) StatusPill("Settings saved")
         ToolOutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) {
-            Text(if (saved) "查看配置" else "配置$title")
+            Text(if (saved) "View settings" else "Configure $title")
         }
     }
 }
@@ -265,49 +265,49 @@ internal fun SettingsScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SectionLabel("连接你的服务")
+        SectionLabel("Connect your services")
         SettingsRow(
-            "手机模型",
-            if (model.config.optString("modelKey").isBlank()) "尚未配置"
-            else model.config.optString("modelName").ifBlank { "已保存配置" },
+            "Phone model",
+            if (model.config.optString("modelKey").isBlank()) "Not configured"
+            else model.config.optString("modelName").ifBlank { "Settings saved" },
             Icons.Outlined.Smartphone,
         ) {
             open("model")
         }
         SettingsRow(
-            "电脑 Codex",
-            if (model.state.computerConnected) "已连接" else "连接参数与配置导入",
+            "Computer Codex",
+            if (model.state.computerConnected) "Connected" else "Connection settings and import",
             Icons.Outlined.Computer,
         ) {
             open("computer")
         }
-        SectionLabel("权限与设备")
+        SectionLabel("Permissions and devices")
         SettingsRow(
-            "附近设备",
-            if (model.bluetoothAllowed) "已授权" else "连接眼镜时需要",
+            "Nearby Devices",
+            if (model.bluetoothAllowed) "Granted" else "Required to connect glasses",
             Icons.Outlined.Bluetooth,
         ) {
             actions.appSettings()
         }
         SettingsRow(
-            "高德通知使用权",
-            if (model.notificationAllowed) "已授权 · ${model.state.notificationReadStatus}"
-            else "导航跟随时需要",
+            "Amap notification access",
+            if (model.notificationAllowed) "Granted · ${model.state.notificationReadStatus}"
+            else "Required for navigation following",
             Icons.Outlined.NotificationsNone,
             actions.notificationAccess,
         )
         SettingsRow(
-            "后台状态通知",
-            if (model.backgroundNotifications) "已允许" else "可选，查看后台连接状态",
+            "Background status notifications",
+            if (model.backgroundNotifications) "Allowed" else "Optional; see background connection status",
             Icons.Outlined.NotificationsActive,
         ) {
             if (model.backgroundNotifications) actions.appSettings()
             else actions.notificationPermission()
         }
-        SettingsRow("设备与诊断", "连接日志、测试通知与音频恢复", Icons.Outlined.Tune) { open("diagnostics") }
-        SectionLabel("外观")
+        SettingsRow("Devices and diagnostics", "Connection logs, test notifications, and audio recovery", Icons.Outlined.Tune) { open("diagnostics") }
+        SectionLabel("Appearance")
         ContentCard {
-            listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (key, title) ->
+            listOf("system" to "System default", "light" to "Light", "dark" to "Dark").forEach { (key, title) ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = model.appearance == key,
@@ -317,10 +317,10 @@ internal fun SettingsScreen(
                 }
             }
         }
-        SectionLabel("了解 OpenRayneo")
-        SettingsRow("再看一次使用引导", "连接眼镜、导航演示与助手配置", Icons.Outlined.Explore, replay)
+        SectionLabel("About OpenRayneo")
+        SettingsRow("Show setup guide", "Glasses connection, navigation demo, and assistant setup", Icons.Outlined.Explore, replay)
         Note(
-            "OpenRayneo ${BuildConfig.VERSION_NAME}\n音频仅在手机内存中处理。系统语音输入尚未接入眼镜音频。",
+            "OpenRayneo ${BuildConfig.VERSION_NAME}\nOptional glasses voice sends channel 1 speech to your PC for local transcription. Phone voice input uses the phone's speech service.",
             Modifier.padding(vertical = 12.dp),
         )
     }
@@ -367,46 +367,46 @@ internal fun ConfigurationScreen(model: AppModel, mobile: Boolean, importConfig:
             Modifier.size(40.dp),
             tint = MaterialTheme.colorScheme.primary,
         )
-        Text(if (mobile) "模型服务配置" else "电脑连接配置", style = MaterialTheme.typography.headlineMedium)
+        Text(if (mobile) "Model service settings" else "Computer connection settings", style = MaterialTheme.typography.headlineMedium)
         Note(
-            if (mobile) "支持兼容 Chat Completions 且支持工具调用的模型服务。请向服务商获取地址、模型名和 API Key。"
-            else "先在电脑运行 OpenRayneo 的 Codex 连接脚本，再导入它生成的配置。USB 模式还需要开启端口转发。"
+            if (mobile) "Use a Chat Completions compatible service with tool calling. Get the URL, model name, and API key from your provider."
+            else "Run the OpenRayneo Codex connection script on your computer, then import its configuration. USB mode also needs port forwarding."
         )
         if (!mobile) {
             ToolButton(onClick = importConfig, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.FileOpen, null)
                 Spacer(Modifier.width(8.dp))
-                Text("导入电脑配置文件")
+                Text("Import computer configuration")
             }
-            Note("选择 OpenRayneo-setup.json。它包含访问凭据，导入完成后请删除下载目录中的副本。")
+            Note("Select OpenRayneo-setup.json. It contains credentials; delete the copy in Downloads after importing.")
             HorizontalDivider()
-            Text("或手动填写", style = MaterialTheme.typography.titleMedium)
+            Text("Or enter manually", style = MaterialTheme.typography.titleMedium)
         }
         OutlinedTextField(
             url,
             { model.formDrafts[urlKey] = it },
             Modifier.fillMaxWidth(),
-            label = { Text(if (mobile) "服务地址" else "电脑服务地址") },
+            label = { Text(if (mobile) "Service URL" else "Computer service URL") },
             keyboardOptions =
                 KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-            placeholder = { Text(if (mobile) "https://服务商/v1" else "ws://127.0.0.1:4500") },
+            placeholder = { Text(if (mobile) "https://provider.example/v1" else "ws://127.0.0.1:4500") },
             singleLine = true,
             supportingText = {
-                Text(if (mobile) "使用 HTTPS 地址，不要把密钥放进地址中" else "USB：本机地址；无线连接：使用 WSS")
+                Text(if (mobile) "Use HTTPS. Do not include your API key in the URL." else "USB: loopback address; wireless: use WSS")
             },
         )
         OutlinedTextField(
             name,
             { model.formDrafts[nameKey] = it },
             Modifier.fillMaxWidth(),
-            label = { Text(if (mobile) "模型名称" else "电脑工作目录（可选）") },
+            label = { Text(if (mobile) "Model name" else "Computer working directory (optional)") },
             singleLine = true,
         )
         OutlinedTextField(
             secret,
             { model.formDrafts[secretKey] = it },
             Modifier.fillMaxWidth(),
-            label = { Text(if (mobile) "API Key" else "连接令牌") },
+            label = { Text(if (mobile) "API Key" else "Connection token") },
             keyboardOptions =
                 KeyboardOptions(
                     keyboardType = KeyboardType.Password,
@@ -421,7 +421,7 @@ internal fun ConfigurationScreen(model: AppModel, mobile: Boolean, importConfig:
                 IconButton(onClick = { showSecret = !showSecret }) {
                     Icon(
                         if (showSecret) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        if (showSecret) "隐藏密钥" else "显示密钥",
+                        if (showSecret) "Hide secret" else "Show secret",
                     )
                 }
             },
@@ -436,14 +436,14 @@ internal fun ConfigurationScreen(model: AppModel, mobile: Boolean, importConfig:
             enabled = ready,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) {
-            Text("保存配置")
+            Text("Save settings")
         }
-        Note("凭据使用 Android Keystore 加密保存。保存不会发起模型请求或电脑任务，连接结果请在助手页查看。")
+        Note("Credentials are encrypted using Android Keystore. Saving does not send requests or start tasks. Check connections in Assistant.")
         if (!mobile)
             ContentCard {
-                Text("USB 连接步骤", style = MaterialTheme.typography.titleMedium)
+                Text("USB connection steps", style = MaterialTheme.typography.titleMedium)
                 Note(
-                    "1. 电脑安装并登录 Codex CLI\n2. 运行仓库中的 scripts/phone-codex.py\n3. 电脑执行 adb reverse tcp:4500 tcp:4500\n4. 在助手页选择电脑 Codex，点击连接"
+                    "1. Install Codex CLI and sign in on your computer\n2. Run scripts/phone-codex.py from this repository\n3. Run adb reverse tcp:4500 tcp:4500 on your computer\n4. In Assistant, select Computer Codex and connect"
                 )
             }
     }
@@ -460,13 +460,13 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ContentCard {
-            Text("通知读取", style = MaterialTheme.typography.titleMedium)
-            Note(if (model.notificationAllowed) "系统权限已授权" else "系统权限未授权")
+            Text("Notification access", style = MaterialTheme.typography.titleMedium)
+            Note(if (model.notificationAllowed) "System permission granted" else "System permission not granted")
             Note(s.notificationReadStatus)
-            Note("当前高德候选：${s.navigationEntries.size} 条")
+            Note("Amap notification candidates: ${s.navigationEntries.size}")
             if (s.notificationSnapshotAt > 0)
                 Note(
-                    "最近快照同步：" +
+                    "Last snapshot sync: " +
                         java.text
                             .SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                             .format(java.util.Date(s.notificationSnapshotAt))
@@ -479,7 +479,7 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
                 },
                 enabled = model.notificationAllowed,
             ) {
-                Text("恢复通知读取")
+                Text("Restore notification access")
             }
         }
         ContentCard {
@@ -491,7 +491,7 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
                 onClick = { model.attempt { model.service().connection.sendTestNotification() } },
                 enabled = ready,
             ) {
-                Text("发送测试通知")
+                Text("Send test notification")
             }
             ToolOutlinedButton(
                 onClick = { model.attempt { model.service().retryAudio() } },
@@ -499,27 +499,27 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
                     s.glasses.session?.phase in
                         setOf(PagePhase.LAYOUT, PagePhase.SETTLING, PagePhase.READY),
             ) {
-                Text("重启音频解码，保持页面")
+                Text("Restart audio decoder, keep page")
             }
             ToolOutlinedButton(
                 onClick = { model.attempt { model.service().disconnect() } },
                 enabled = ready || s.glasses.link.phase == LinkPhase.CONNECTING,
             ) {
-                Text("断开眼镜")
+                Text("Disconnect glasses")
             }
         }
         ContentCard {
-            Text("高级连接诊断", style = MaterialTheme.typography.titleMedium)
+            Text("Advanced connection diagnostics", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(bleOnly, { bleOnly = it }, enabled = !ready)
-                Text("仅 BLE 诊断", Modifier.padding(start = 12.dp))
+                Text("BLE-only diagnostics", Modifier.padding(start = 12.dp))
             }
-            Note("仅用于连接排查；导航和助手显示需要完整连接。")
+            Note("For connection troubleshooting only. Navigation and assistant display need a full connection.")
             if (bleOnly) {
-                ToolOutlinedButton(onClick = actions.scan, enabled = !ready) { Text("扫描设备") }
+                ToolOutlinedButton(onClick = actions.scan, enabled = !ready) { Text("Scan devices") }
                 s.devices.forEach { device ->
                     TextButton(onClick = { model.connect(device, true) }, enabled = !ready) {
-                        Text("诊断连接 ${device.name}")
+                        Text("Diagnostic connection: ${device.name}")
                     }
                 }
             }
@@ -529,7 +529,7 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            SectionLabel("连接日志")
+            SectionLabel("Connection logs")
             TextButton(
                 onClick = {
                     context
@@ -537,12 +537,12 @@ internal fun DiagnosticsScreen(model: AppModel, actions: UiActions) {
                         .setPrimaryClip(
                             ClipData.newPlainText("OpenRayneo", s.logs.joinToString("\n"))
                         )
-                    model.notice = "日志已复制"
+                    model.notice = "Logs copied"
                 }
             ) {
-                Text("复制日志")
+                Text("Copy logs")
             }
         }
-        ContentCard { Note(s.logs.joinToString("\n").ifBlank { "暂无连接日志" }) }
+        ContentCard { Note(s.logs.joinToString("\n").ifBlank { "No connection logs yet" }) }
     }
 }

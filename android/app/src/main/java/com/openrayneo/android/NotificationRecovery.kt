@@ -12,7 +12,7 @@ internal enum class NotificationReadPhase {
 
 internal data class NotificationReadState(
     val phase: NotificationReadPhase = NotificationReadPhase.DISCONNECTED,
-    val detail: String = "等待通知监听服务",
+    val detail: String = "Waiting for notification access",
 )
 
 internal interface NavigationNotificationReader {
@@ -57,9 +57,9 @@ internal class NotificationRecovery(
             val previous = reader
             reader = null
             attempts = 0
-            publish(NotificationReadPhase.DISCONNECTED, "正在重新连接通知监听")
+            publish(NotificationReadPhase.DISCONNECTED, "Reconnecting notification listener")
             runCatching { if (previous != null) previous.unbind() else resetBinding() }
-                .onFailure { log("通知监听解绑失败：${it.javaClass.simpleName}") }
+                .onFailure { log("Notification listener unbind failed: ${it.javaClass.simpleName}") }
             // requestUnbind disables callbacks immediately; do not wait for onListenerDisconnected.
             pending = true
             schedule(retryTask, 500)
@@ -82,7 +82,7 @@ internal class NotificationRecovery(
         if (reader !== candidate) return
         reader = null
         clearTimers()
-        publish(NotificationReadPhase.DISCONNECTED, "通知监听已断开，准备恢复")
+        publish(NotificationReadPhase.DISCONNECTED, "Notification listener disconnected; preparing recovery")
         if (checkPermission()) retry()
     }
 
@@ -95,14 +95,14 @@ internal class NotificationRecovery(
             attempts = 0
             // Publish the snapshot and readiness together, without briefly rendering stale
             // directions.
-            state = NotificationReadState(NotificationReadPhase.CONNECTED, "通知监听已连接")
+            state = NotificationReadState(NotificationReadPhase.CONNECTED, "Notification listener connected")
             replace(entries, state)
-            log("通知快照同步：高德候选 ${entries.size} 条，可解析 ${entries.count { it.instruction != null }} 条")
+            log("Notification snapshot: Amap candidates ${entries.size}, recognized ${entries.count { it.instruction != null }}")
         } catch (failure: Exception) {
             if (reader !== active) return
             reader = null
-            publish(NotificationReadPhase.DISCONNECTED, "读取通知失败，正在恢复监听")
-            log("通知快照读取失败：${failure.javaClass.simpleName}")
+            publish(NotificationReadPhase.DISCONNECTED, "Could not read notifications; restoring listener")
+            log("Notification snapshot failed: ${failure.javaClass.simpleName}")
             runCatching { active.unbind() }
             retry()
         }
@@ -116,14 +116,14 @@ internal class NotificationRecovery(
         }
         attempts++
         pending = true
-        publish(NotificationReadPhase.CONNECTING, "权限已开启，正在连接通知监听（$attempts/3）")
+        publish(NotificationReadPhase.CONNECTING, "Permission granted; connecting notification listener ($attempts/3）")
         schedule(timeout, 8_000)
         try {
             bind()
         } catch (failure: Exception) {
             cancel(timeout)
             pending = false
-            log("通知监听重连请求失败：${failure.javaClass.simpleName}")
+            log("Notification listener reconnect failed: ${failure.javaClass.simpleName}")
             retry()
         }
     }
@@ -138,15 +138,15 @@ internal class NotificationRecovery(
         // Rebuild that binding before the next delayed attempt; never toggle notification access.
         if (attempts > 0)
             runCatching { resetBinding() }
-                .onFailure { log("通知监听绑定重置失败：${it.javaClass.simpleName}") }
+                .onFailure { log("Notification listener reset failed: ${it.javaClass.simpleName}") }
         pending = true
-        publish(NotificationReadPhase.CONNECTING, "权限已开启，等待恢复通知监听")
+        publish(NotificationReadPhase.CONNECTING, "Permission granted; waiting to restore notification listener")
         schedule(retryTask, if (attempts <= 1) 2_000 else 5_000)
     }
 
     private fun failed() {
         clearTimers()
-        publish(NotificationReadPhase.FAILED, "通知权限已开启，但监听未连接；请点“恢复通知读取”")
+        publish(NotificationReadPhase.FAILED, "Notification permission granted, but listener disconnected. Tap Restore notification access.")
     }
 
     private fun checkPermission(): Boolean {
@@ -154,7 +154,7 @@ internal class NotificationRecovery(
         clearTimers()
         reader = null
         attempts = 0
-        publish(NotificationReadPhase.NOT_GRANTED, "尚未开启通知使用权")
+        publish(NotificationReadPhase.NOT_GRANTED, "Notification access not enabled")
         return false
     }
 

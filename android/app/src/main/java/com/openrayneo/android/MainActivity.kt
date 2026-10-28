@@ -14,6 +14,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import org.json.JSONObject
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CancellationException
 
 internal class MainActivity : ComponentActivity() {
     private val model: AppModel by viewModels()
@@ -24,7 +29,7 @@ internal class MainActivity : ComponentActivity() {
             if (model.wantsScan) {
                 model.wantsScan = false
                 if (model.bluetoothAllowed) model.scan()
-                else model.error = "连接眼镜需要附近设备权限。可以稍后在设置中授权，其他配置仍可使用。"
+                else model.error = "Nearby Devices permission is required to connect glasses. Grant it later in Settings and configure other features now."
             }
         }
     private val importFile =
@@ -32,7 +37,7 @@ internal class MainActivity : ComponentActivity() {
             if (uri != null)
                 model.attempt {
                     val bytes = contentResolver.openInputStream(uri)!!.use { it.readNBytes(16385) }
-                    require(bytes.size <= 16384) { "配置文件过大" }
+                    require(bytes.size <= 16384) { "Configuration file too large" }
                     model.importConfig(JSONObject(String(bytes, Charsets.UTF_8)))
                 }
         }
@@ -98,7 +103,7 @@ internal class MainActivity : ComponentActivity() {
                                             NavigationFeed.PACKAGE
                                         )
                                     ) {
-                                        "请先在手机安装高德地图"
+                                        "Install Amap on your phone first"
                                     }
                                 )
                             }
@@ -115,10 +120,16 @@ internal class MainActivity : ComponentActivity() {
                                             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                                             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                                         )
-                                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                                        .putExtra(
+                                            RecognizerIntent.EXTRA_LANGUAGE,
+                                            java.util.Locale.getDefault()
+                                                .takeIf { it.language == "en" }
+                                                ?.toLanguageTag() ?: "en-GB",
+                                        )
                                 )
                             }
                         },
+                        switchApp = ::switchGlassesApp,
                     ),
                 )
             }
@@ -128,6 +139,43 @@ internal class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         model.refreshPermissions()
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun switchGlassesApp(official: Boolean) {
+        if (model.switchingApps) return
+        if (!official && !model.bluetoothAllowed) { model.error = "Grant Nearby Devices permission before connecting glasses."; return }
+        val launch = if (official) packageManager.getLaunchIntentForPackage("com.rayneo.venus.pub") else null
+        if (official && launch == null) { model.error = "Official RayNeo app is not installed."; return }
+        model.switchingApps = true
+        lifecycleScope.launch {
+            try {
+                if (official) {
+                    model.service().stopGlassesVoice()
+                    model.service().disconnect()
+                    withTimeout(8000) {
+                        while (model.state.glasses.link.phase != LinkPhase.DISCONNECTED || model.state.glasses.disconnecting) delay(100)
+                    }
+                }
+                AppSwitcher.switch(model.config, official)
+                if (official) startActivity(launch)
+                else {
+                    delay(600) // Let Android release the official RFCOMM socket before reconnecting.
+                    if (model.state.glasses.link.phase != LinkPhase.FULL) {
+                        model.service().connection.showBonded()
+                        val choices = model.state.devices
+                        val selected = choices.firstOrNull { it.bluetooth.address == model.lastGlassesAddress }
+                            ?: choices.singleOrNull()
+                        if (selected != null) model.connect(selected, false)
+                        else model.notice = "Official connection released. Tap Connect and choose your glasses."
+                    } else model.notice = "OpenRayneo already has the glasses connection."
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                model.error = error.message ?: "App switch failed. Check the PC connection."
+            } finally { model.switchingApps = false }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -144,4 +192,5 @@ internal data class UiActions(
     val openGaode: () -> Unit,
     val importConfig: () -> Unit,
     val voice: (AnswerSource) -> Unit,
+    val switchApp: (Boolean) -> Unit,
 )

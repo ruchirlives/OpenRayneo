@@ -1,5 +1,7 @@
 # OpenRayneo Android
 
+**Local Windows voice-control addition:** this checkout now includes an opt-in glasses microphone → local PC Whisper → Codex path. See [glasses voice setup and validation limits](../docs/android-glasses-voice.md). The original version history below describes upstream releases, before this addition.
+
 面向普通、无 Root 安卓手机，直接连接 RayNeo iO。需要 Android 13（API 33）或更高版本。0.1.3-dev 已在小米 13 完成首次完整蓝牙连接；0.2.0-dev 已验证手机与电脑 Codex 对话、SDK 导航显示。
 
 当前正式版 v1.0（应用版本 1.0.0） 按用户要求改为**高德 App 导航通知跟随**，已移除高德 SDK、Key 和定位权限。导航在高德 App 里启动，OpenRayneo 读取导航通知后将方向／距离／路名显示到眼镜。导航恢复 `0x13` 的 20×5 固定大箭头／距离／动作／8 格路名，先启动字幕音频会话，再配置布局；导航音频按 48 kHz 单声道 PCM 解码。问答仍使用 `0x17` 实时提示和双声道，切换模式会重建会话。手机显示音量，只在内存处理，不保存或上传，可在设备页暂停／恢复。字幕音频与固定网格并行仍待眼镜真机验收。

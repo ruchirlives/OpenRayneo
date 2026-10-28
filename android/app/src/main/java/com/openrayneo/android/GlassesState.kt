@@ -14,7 +14,7 @@ internal sealed interface DisplayIntent {
 }
 internal enum class DisplayOwnership { APP, YIELDED }
 internal enum class LinkPhase { DISCONNECTED, SCANNING, CONNECTING, BLE_ONLY, FULL, RETRY_WAIT, CLOSING }
-internal data class LinkState(val phase: LinkPhase = LinkPhase.DISCONNECTED, val detail: String = "等待连接眼镜")
+internal data class LinkState(val phase: LinkPhase = LinkPhase.DISCONNECTED, val detail: String = "Waiting to connect glasses")
 internal enum class PageMode { NAVIGATION, PROMPT }
 internal enum class PagePhase { STARTING, LAYOUT, SETTLING, READY, CLOSING }
 internal data class PageContent(val key: String, val text: String, val answer: String? = null)
@@ -24,7 +24,7 @@ internal data class PageSession(
 )
 internal data class NavigationState(val enabled: Boolean = false, val key: String? = null, val frame: String? = null)
 internal enum class AudioPhase { STOPPED, WAITING_PACKET, WAITING_PCM, RECEIVING, STALLED, FAILED }
-internal data class AudioState(val phase: AudioPhase = AudioPhase.STOPPED, val detail: String = "眼镜收音已停止")
+internal data class AudioState(val phase: AudioPhase = AudioPhase.STOPPED, val detail: String = "Glasses audio stopped")
 internal data class AnswerPermit(val ref: AnswerRef, val revision: Long)
 internal data class GlassesState(
     val intent: DisplayIntent = DisplayIntent.Idle,
@@ -43,20 +43,20 @@ internal data class GlassesState(
     val disconnecting: Boolean = false,
 ) {
     val displayDescription: String get() = when {
-        disconnecting -> "正在关闭眼镜会话"
-        ownership == DisplayOwnership.YIELDED -> "已让出眼镜显示，请主动选择要恢复的功能"
+        disconnecting -> "Closing glasses session"
+        ownership == DisplayOwnership.YIELDED -> "Glasses display released. Select a feature to resume."
         error != null -> error
-        session?.phase == PagePhase.CLOSING -> "正在关闭原页面"
-        link.phase == LinkPhase.BLE_ONLY -> "仅 BLE 诊断连接，未启动显示或收音"
+        session?.phase == PagePhase.CLOSING -> "Closing previous page"
+        link.phase == LinkPhase.BLE_ONLY -> "BLE diagnostics only; display and audio inactive"
         link.phase != LinkPhase.FULL -> link.detail
-        session == null -> "已连接，眼镜显示空闲"
-        session.phase == PagePhase.STARTING -> "等待眼镜确认启动"
-        session.phase == PagePhase.LAYOUT -> "正在确认导航布局"
-        session.phase == PagePhase.SETTLING -> "页面已确认，正在发送内容"
-        session.writtenContent != session.content -> "正在更新眼镜内容"
-        session.mode == PageMode.NAVIGATION -> "导航会话已就绪"
-        intent is DisplayIntent.Answer -> "回答会话已就绪"
-        else -> "实时提示会话已就绪"
+        session == null -> "Connected; glasses display idle"
+        session.phase == PagePhase.STARTING -> "Waiting for glasses startup confirmation"
+        session.phase == PagePhase.LAYOUT -> "Confirming navigation layout"
+        session.phase == PagePhase.SETTLING -> "Page confirmed; sending content"
+        session.writtenContent != session.content -> "Updating glasses content"
+        session.mode == PageMode.NAVIGATION -> "Navigation session ready"
+        intent is DisplayIntent.Answer -> "Answer session ready"
+        else -> "Live prompt session ready"
     }
 }
 internal sealed interface PageSignal {

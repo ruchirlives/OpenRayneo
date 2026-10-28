@@ -136,7 +136,7 @@ internal fun CompanionTheme(appearance: String, content: @Composable () -> Unit)
 
 @Composable
 internal fun GlassesArtwork(modifier: Modifier = Modifier, color: Color = Pine) {
-    Canvas(modifier.semantics { contentDescription = "RayNeo 智能眼镜轮廓" }) {
+    Canvas(modifier.semantics { contentDescription = "RayNeo smart glasses outline" }) {
         val w = size.width
         val h = size.height
         drawCircle(color.copy(alpha = .055f), minOf(w * .32f, h * .46f), Offset(w * .5f, h * .5f))

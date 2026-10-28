@@ -18,7 +18,7 @@ internal object ProtocolCodec {
     }
 
     fun frame(protocol: Int, sequence: Int, payload: ByteArray, acknowledgement: Boolean = false): ByteArray {
-        require(payload.size <= 65531) { "协议载荷超过 65531 字节" }
+        require(payload.size <= 65531) { "Protocol payload exceeds 65531 bytes" }
         val body = be16(sequence) + byteArrayOf(0, protocol.toByte()) + payload
         val magic = if (acknowledgement) byteArrayOf(0x55, 0xaa.toByte()) else byteArrayOf(0xaa.toByte(), 0x55)
         return magic + be16(body.size) + body + be16(crc16(body))
@@ -38,15 +38,15 @@ internal object ProtocolCodec {
     }
 
     fun pairingFields(payload: ByteArray): Map<Int, ByteArray> {
-        require(payload.size >= 3 && u16(payload, 1) == payload.size - 3) { "无效的认证消息长度" }
+        require(payload.size >= 3 && u16(payload, 1) == payload.size - 3) { "Invalid authentication message length" }
         val fields = mutableMapOf<Int, ByteArray>()
         var offset = 3
         while (offset < payload.size) {
-            require(offset + 3 <= payload.size) { "认证 TLV 不完整" }
+            require(offset + 3 <= payload.size) { "Incomplete authentication TLV" }
             val tag = payload[offset].toInt() and 255
             val size = u16(payload, offset + 1)
             offset += 3
-            require(offset + size <= payload.size) { "认证 TLV 内容不完整" }
+            require(offset + size <= payload.size) { "Incomplete authentication TLV content" }
             fields[tag] = payload.copyOfRange(offset, offset + size)
             offset += size
         }
@@ -72,12 +72,12 @@ internal object ProtocolCodec {
         fun variable(): Int {
             var result = 0
             for (shift in 0..28 step 7) {
-                require(offset < payload.size) { "Protobuf 字段不完整" }
+                require(offset < payload.size) { "Incomplete Protobuf field" }
                 val value = payload[offset++].toInt() and 255
                 result = result or ((value and 127) shl shift)
                 if (value and 128 == 0) return result
             }
-            error("Protobuf 字段过长")
+            error("Protobuf field too long")
         }
         var type = -1
         var json: String? = null
@@ -88,14 +88,14 @@ internal object ProtocolCodec {
                 0 -> { val value = variable(); if (tag ushr 3 == 2) type = value }
                 2 -> {
                     val size = variable()
-                    require(size >= 0 && size <= payload.size - offset) { "Protobuf 内容不完整" }
+                    require(size >= 0 && size <= payload.size - offset) { "Incomplete Protobuf content" }
                     if (tag ushr 3 == 3) json = String(payload, offset, size, Charsets.UTF_8)
                     if (tag ushr 3 == 4) audio = payload.copyOfRange(offset, offset + size)
                     offset += size
                 }
                 1 -> { require(payload.size - offset >= 8); offset += 8 }
                 5 -> { require(payload.size - offset >= 4); offset += 4 }
-                else -> error("不支持的 Protobuf 类型")
+                else -> error("Unsupported Protobuf type")
             }
         }
         return Message(type, json, audio)

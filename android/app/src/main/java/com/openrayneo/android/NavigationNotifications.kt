@@ -56,20 +56,20 @@ internal object NavigationFeed {
         get() =
             when {
                 !connected -> listenerState.detail
-                !enabled -> "请在高德开始导航，再选择要跟随的通知"
-                selected == null -> "等待选定的高德通知；若通知已更换，请重新选择"
-                selected?.instruction == null -> "已收到高德通知，但其中没有可识别的转向和距离，请查看高德"
-                else -> selected!!.instruction!!.let { "跟随高德：${it.direction} · ${it.meters}米" }
+                !enabled -> "Start navigation in Amap, then select a notification to follow"
+                selected == null -> "Waiting for the selected Amap notification. Select again if it changed."
+                selected?.instruction == null -> "Amap notification received, but no turn or distance recognized. Check Amap."
+                else -> selected!!.instruction!!.let { "Following Amap: ${NavigationFrame.directionLabel(it.direction)} · ${it.meters} m" }
             }
 
     val frame: String?
         get() {
             if (!enabled) return null
-            if (!connected) return NavigationFrame.status("通知读取已断开", "请查看手机")
-            val entry = selected ?: return NavigationFrame.status("等待高德通知", "请以手机导航为准")
+            if (!connected) return NavigationFrame.status("Notification access disconnected", "Check phone")
+            val entry = selected ?: return NavigationFrame.status("Waiting for Amap", "Follow phone navigation")
             return entry.instruction?.let {
                 NavigationFrame.render(it.direction, it.meters, entry.title)
-            } ?: NavigationFrame.status("指令暂未识别", "请查看高德")
+            } ?: NavigationFrame.status("Instruction unknown", "Check Amap")
         }
 
     fun initialize(context: Context) {
@@ -125,7 +125,7 @@ internal object NavigationFeed {
     }
 
     fun follow(key: String) {
-        check(entries.containsKey(key)) { "该通知已消失，请在高德开始导航后刷新" }
+        check(entries.containsKey(key)) { "This notification is gone. Start navigation in Amap and refresh." }
         selectedKey = key
         enabled = true
         automaticSelection = false
@@ -156,7 +156,7 @@ internal class NavigationNotifications : NotificationListenerService() {
     private val reader =
         object : NavigationNotificationReader {
             override fun snapshot(): List<NavigationFeed.Entry> =
-                checkNotNull(activeNotifications) { "通知快照不可用" }
+                checkNotNull(activeNotifications) { "Notification snapshot unavailable" }
                     .filter { it.packageName == NavigationFeed.PACKAGE }
                     .mapNotNull(::parseSafely)
 
@@ -193,7 +193,7 @@ internal class NavigationNotifications : NotificationListenerService() {
         try {
             parse(item)
         } catch (failure: Exception) {
-            Log.w("OpenRayneo", "高德通知解析失败：${failure.javaClass.simpleName}")
+            Log.w("OpenRayneo", "Amap notification parsing failed: ${failure.javaClass.simpleName}")
             null
         }
 

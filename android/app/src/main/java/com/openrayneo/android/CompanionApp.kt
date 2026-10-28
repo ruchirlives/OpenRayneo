@@ -62,11 +62,11 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                     title = {
                         Text(
                             when (route) {
-                                "settings" -> "设置"
-                                "model" -> "手机模型"
-                                "computer" -> "电脑连接"
-                                "diagnostics" -> "设备与诊断"
-                                else -> listOf("OpenRayneo", "导航", "助手")[tab]
+                                "settings" -> "Settings"
+                                "model" -> "Phone model"
+                                "computer" -> "Computer connection"
+                                "diagnostics" -> "Devices and diagnostics"
+                                else -> listOf("OpenRayneo", "Navigation", "Assistant")[tab]
                             }
                         )
                     },
@@ -79,14 +79,14 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                                         else "settings"
                                 }
                             ) {
-                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
                             }
                     },
                     actions = {
                         if (route.isEmpty()) {
-                            if (s.glasses.link.phase == LinkPhase.FULL) StatusPill("眼镜已连接")
+                            if (s.glasses.link.phase == LinkPhase.FULL) StatusPill("Glasses connected")
                             IconButton(onClick = { route = "settings" }) {
-                                Icon(Icons.Outlined.Settings, "设置")
+                                Icon(Icons.Outlined.Settings, "Settings")
                             }
                         }
                     },
@@ -105,7 +105,7 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                             Icons.Outlined.NearMe,
                             Icons.AutoMirrored.Outlined.Chat,
                         )
-                    listOf("眼镜", "导航", "助手").forEachIndexed { index, title ->
+                    listOf("Glasses", "Navigation", "Assistant").forEachIndexed { index, title ->
                         NavigationBarItem(
                             selected = tab == index,
                             onClick = { tab = index },
@@ -158,6 +158,7 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                                         { devices = true },
                                         { tab = it },
                                         { route = "diagnostics" },
+                                        actions.switchApp,
                                     )
                                 1 ->
                                     NavigationScreen(
@@ -177,9 +178,9 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
     if (sources)
         ModalBottomSheet(onDismissRequest = { sources = false }) {
             Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-                Text("导航通知来源", style = MaterialTheme.typography.headlineSmall)
-                Note("选择包含转向和距离的通知。只有“正在导航”的消息无法提供方向。", Modifier.padding(vertical = 12.dp))
-                if (s.navigationEntries.isEmpty()) Note("还没有收到高德导航通知")
+                Text("Navigation notification source", style = MaterialTheme.typography.headlineSmall)
+                Note("Choose a notification with a turn and distance. A generic navigation message cannot provide directions.", Modifier.padding(vertical = 12.dp))
+                if (s.navigationEntries.isEmpty()) Note("No Amap navigation notifications received yet")
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(s.navigationEntries, key = { it.key }) { entry ->
                         OutlinedCard(
@@ -195,7 +196,7 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    entry.title.ifBlank { "高德导航" },
+                                    entry.title.ifBlank { "Amap navigation" },
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Note(entry.texts.filter { it != entry.title }.joinToString("\n"))
@@ -204,8 +205,8 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
                                         entry.key == s.glasses.navigation.key &&
                                             s.glasses.navigation.enabled
                                     )
-                                        "正在跟随"
-                                    else "跟随这条通知",
+                                        "Following"
+                                    else "Follow this notification",
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
@@ -217,9 +218,9 @@ internal fun CompanionApp(model: AppModel, actions: UiActions) {
     model.error?.let { message ->
         AlertDialog(
             onDismissRequest = { model.error = null },
-            title = { Text("操作提示") },
+            title = { Text("Notice") },
             text = { Text(message) },
-            confirmButton = { TextButton(onClick = { model.error = null }) { Text("知道了") } },
+            confirmButton = { TextButton(onClick = { model.error = null }) { Text("OK") } },
         )
     }
 }
@@ -230,6 +231,7 @@ private fun GlassesScreen(
     connect: () -> Unit,
     navigate: (Int) -> Unit,
     diagnostics: () -> Unit,
+    switchApp: (Boolean) -> Unit,
 ) {
     val state = model.state.glasses
     val linked = state.link.phase == LinkPhase.FULL
@@ -249,7 +251,7 @@ private fun GlassesScreen(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(model.deviceName, style = MaterialTheme.typography.titleMedium)
-                        Note(if (linked) "已连接 · 手机直连" else state.link.detail)
+                        Note(if (linked) "Connected · Direct phone connection" else state.link.detail)
                     }
                     ToolOutlinedButton(
                         onClick =
@@ -257,37 +259,49 @@ private fun GlassesScreen(
                             else connect
                     ) {
                         Text(
-                            if (linked || state.link.phase == LinkPhase.BLE_ONLY) "管理"
-                            else if (busy) "连接进度" else "连接"
+                            if (linked || state.link.phase == LinkPhase.BLE_ONLY) "Manage"
+                            else if (busy) "Connection progress" else "Connect"
                         )
                     }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }
-        item { SectionLabel("眼镜画面") }
+        item {
+            ContentCard {
+                Text("Switch glasses app", style = MaterialTheme.typography.titleMedium)
+                Note(if (model.switchingApps) "Switching…" else "Quick switch using the connected PC helper. Pairing and app data are preserved.")
+                ToolButton(onClick = { switchApp(true) }, enabled = model.state.available && !model.switchingApps && !busy) {
+                    Text("Use official RayNeo")
+                }
+                ToolOutlinedButton(onClick = { switchApp(false) }, enabled = model.state.available && !model.switchingApps && !busy) {
+                    Text("Use OpenRayneo")
+                }
+            }
+        }
+        item { SectionLabel("Glasses display") }
         item { GlassesOutputPreview(state) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (linked) {
                     Note(state.displayDescription)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ToolOutlinedButton(onClick = { navigate(1) }) { Text("导航") }
+                        ToolOutlinedButton(onClick = { navigate(1) }) { Text("Navigation") }
                         ToolOutlinedButton(
                             onClick = { model.attempt { model.service().openStandby() } }
                         ) {
-                            Text("实时提示")
+                            Text("Live prompts")
                         }
                     }
                     if (state.intent is DisplayIntent.Answer)
                         TextButton(
                             onClick = { model.attempt { model.service().dismissAnswer() } }
                         ) {
-                            Text("结束眼镜回答")
+                            Text("End glasses answer")
                         }
                     if (state.session != null)
                         TextButton(onClick = { model.attempt { model.service().pausePrompt() } }) {
-                            Text("暂停显示与收音")
+                            Text("Pause display and audio")
                         }
                 }
             }
@@ -300,15 +314,15 @@ private fun GlassesScreen(
                 ) {
                     Icon(Icons.Outlined.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text("眼镜音频", style = MaterialTheme.typography.titleSmall)
+                        Text("Glasses audio", style = MaterialTheme.typography.titleSmall)
                         Note(state.audio.detail)
                     }
                 }
                 if (state.audio.phase == AudioPhase.RECEIVING) {
                     val levels = model.state.audioLevels
                     val channels =
-                        if (levels.channels == 1) listOf("单声道" to levels.left)
-                        else listOf("声道 1" to levels.left, "声道 2" to levels.right)
+                        if (levels.channels == 1) listOf("Mono" to levels.left)
+                        else listOf("Channel 1" to levels.left, "Channel 2" to levels.right)
                     channels.forEach { (label, rms) ->
                         Text(label, style = MaterialTheme.typography.labelSmall)
                         LinearProgressIndicator(
@@ -321,17 +335,17 @@ private fun GlassesScreen(
                         )
                     }
                 }
-                Note("仅在手机计算音量，不保存或上传音频。")
+                Note("Audio stays in memory. When glasses voice is enabled, channel 1 speech is sent to your PC for local transcription.")
             }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FeatureTile("导航", "高德通知", Icons.Outlined.NearMe, Modifier.weight(1f)) {
+                FeatureTile("Navigation", "Amap notifications", Icons.Outlined.NearMe, Modifier.weight(1f)) {
                     navigate(1)
                 }
                 FeatureTile(
-                    "助手",
-                    "手机 · 电脑",
+                    "Assistant",
+                    "Phone · Computer",
                     Icons.AutoMirrored.Outlined.Chat,
                     Modifier.weight(1f),
                 ) {
@@ -374,14 +388,14 @@ private fun DevicePicker(model: AppModel, actions: UiActions) {
         Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("连接你的眼镜", style = MaterialTheme.typography.headlineSmall)
-        Note("让眼镜保持唤醒，并先断开官方 App 或电脑与眼镜的连接。出现系统配对提示时，请在手机上确认。")
+        Text("Connect your glasses", style = MaterialTheme.typography.headlineSmall)
+        Note("Keep your glasses awake and disconnect them from the official app or computer. Confirm the Bluetooth pairing prompt on your phone.")
         Text(s.glasses.link.detail, color = MaterialTheme.colorScheme.primary)
         if (!model.bluetoothAllowed) {
             ToolButton(onClick = actions.scan, modifier = Modifier.fillMaxWidth()) {
-                Text("允许附近设备并扫描")
+                Text("Allow Nearby Devices and scan")
             }
-            TextButton(onClick = actions.appSettings) { Text("前往应用权限设置") }
+            TextButton(onClick = actions.appSettings) { Text("Open app permissions") }
         } else {
             ToolButton(
                 onClick = actions.scan,
@@ -390,7 +404,7 @@ private fun DevicePicker(model: AppModel, actions: UiActions) {
             ) {
                 Icon(Icons.AutoMirrored.Outlined.BluetoothSearching, null)
                 Spacer(Modifier.width(8.dp))
-                Text("扫描眼镜")
+                Text("Scan for glasses")
             }
         }
         if (connecting || s.glasses.link.phase == LinkPhase.SCANNING)
@@ -406,17 +420,17 @@ private fun DevicePicker(model: AppModel, actions: UiActions) {
                 ) {
                     ListItem(
                         headlineContent = { Text(device.name) },
-                        supportingContent = { Text(if (ready) "连接已建立" else "点按连接") },
+                        supportingContent = { Text(if (ready) "Connection established" else "Tap to connect") },
                         leadingContent = { Icon(Icons.Outlined.Visibility, null) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
             }
         }
-        if (s.devices.isEmpty() && model.bluetoothAllowed && !connecting) Note("未发现眼镜时，可唤醒眼镜后重新扫描。")
+        if (s.devices.isEmpty() && model.bluetoothAllowed && !connecting) Note("If no glasses appear, wake them and scan again.")
         if (ready || connecting)
             ToolOutlinedButton(onClick = { model.attempt { model.service().disconnect() } }) {
-                Text(if (ready) "断开眼镜" else "取消连接")
+                Text(if (ready) "Disconnect glasses" else "Cancel connection")
             }
     }
 }
@@ -443,14 +457,14 @@ private fun NavigationScreen(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { SectionLabel("眼镜画面") }
+        item { SectionLabel("Glasses display") }
         item { GlassesOutputPreview(s.glasses) }
         item {
             ContentCard {
-                Text("高德通知", style = MaterialTheme.typography.titleMedium)
+                Text("Amap notifications", style = MaterialTheme.typography.titleMedium)
                 if (instruction != null) {
                     Text(
-                        "${instruction.direction} · ${instruction.meters} 米",
+                        "${NavigationFrame.directionLabel(instruction.direction)} · ${instruction.meters} m",
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Note(entry!!.title)
@@ -461,15 +475,15 @@ private fun NavigationScreen(
                         (s.glasses.session?.mode != PageMode.NAVIGATION ||
                             s.glasses.session?.writtenContent?.text != frame)
                 ) {
-                    GridPreview(frame, "待发送导航布局")
+                    GridPreview(frame, "Navigation layout to send")
                 }
-                Note("完整路名显示在此处；眼镜布局保留右下角 8 格路名。")
+                Note("The full road name appears here; the glasses show up to 8 characters at the bottom right.")
             }
         }
         item {
             ContentCard {
                 Text(
-                    if (nav.enabled) "正在跟随高德通知" else "准备开始",
+                    if (nav.enabled) "Following Amap notifications" else "Ready to start",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Note(s.notificationReadStatus)
@@ -477,29 +491,29 @@ private fun NavigationScreen(
                     s.notificationReadPhase == NotificationReadPhase.FAILED &&
                         android.os.Build.MANUFACTURER.equals("xiaomi", true)
                 ) {
-                    Note("小米 / HyperOS 的后台自启动可能阻止监听绑定。请检查 OpenRayneo 的“后台自启动”，允许后再恢复通知读取。")
-                    TextButton(onClick = actions.appSettings) { Text("检查应用设置") }
+                    Note("Xiaomi / HyperOS may block notification access unless background autostart is enabled. Enable it for OpenRayneo, then restore notification access.")
+                    TextButton(onClick = actions.appSettings) { Text("Check app settings") }
                 }
                 Note(s.navigationStatus)
                 if (entry != null && nav.enabled) {
                     val age = ((time - entry.updatedAt).coerceAtLeast(0) / 1000)
-                    Note("最近收到通知：${if (age < 60) "${age} 秒前" else "${age / 60} 分钟前"} · 请以高德实时指引为准")
+                    Note("Last notification: ${if (age < 60) "${age} seconds ago" else "${age / 60} minutes ago"} · Follow Amap's live directions")
                 }
                 if (!model.notificationAllowed)
                     ToolButton(
                         onClick = actions.notificationAccess,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("开启通知使用权")
+                        Text("Enable notification access")
                     }
                 else if (!nav.enabled)
                     ToolButton(onClick = actions.openGaode, modifier = Modifier.fillMaxWidth()) {
-                        Text("打开高德导航")
+                        Text("Open Amap navigation")
                     }
                 if (nav.enabled) {
                     if (s.glasses.link.phase != LinkPhase.FULL)
                         ToolButton(onClick = connect, modifier = Modifier.fillMaxWidth()) {
-                            Text("连接眼镜")
+                            Text("Connect glasses")
                         }
                     else {
                         Note(s.glasses.displayDescription)
@@ -512,27 +526,27 @@ private fun NavigationScreen(
                                 onClick = { model.attempt { model.service().reopenNavigation() } },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("恢复眼镜导航")
+                                Text("Resume glasses navigation")
                             }
                     }
                     ToolOutlinedButton(
                         onClick = { model.attempt { model.service().stopNavigation() } },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("停止眼镜跟随")
+                        Text("Stop glasses navigation")
                     }
-                    Note("只停止眼镜跟随，高德导航继续运行。")
+                    Note("This stops glasses updates. Amap navigation keeps running.")
                 }
             }
         }
         item {
             OutlinedCard(onClick = sources) {
                 ListItem(
-                    headlineContent = { Text("通知来源") },
+                    headlineContent = { Text("Notification source") },
                     supportingContent = {
                         Text(
-                            if (s.navigationEntries.isEmpty()) "等待高德导航通知"
-                            else "${s.navigationEntries.size} 条候选通知 · 点按选择"
+                            if (s.navigationEntries.isEmpty()) "Waiting for Amap navigation notifications"
+                            else "${s.navigationEntries.size} notifications · Tap to choose"
                         )
                     },
                     leadingContent = { Icon(Icons.Outlined.NotificationsNone, null) },
@@ -542,7 +556,7 @@ private fun NavigationScreen(
             }
         }
         item {
-            TextButton(onClick = actions.openGaode) { Text("在高德中查看路线") }
+            TextButton(onClick = actions.openGaode) { Text("View route in Amap") }
             ToolOutlinedButton(
                 onClick = {
                     model.attempt {
@@ -551,10 +565,10 @@ private fun NavigationScreen(
                 },
                 enabled = model.notificationAllowed,
             ) {
-                Text("恢复通知读取")
+                Text("Restore notification access")
             }
-            Note("保留通知授权和跟随选择，重新连接监听并读取当前通知。")
-            Note("上方眼镜画面仅随写入结果更新，高德通知单独显示。关闭或断线后不把旧画面当成当前显示。")
+            Note("Reconnect the listener and read current notifications, keeping permissions and your selected notification.")
+            Note("The glasses preview updates after content is sent; Amap notifications appear separately. Old previews do not represent the current display after closing or disconnecting.")
         }
     }
 }

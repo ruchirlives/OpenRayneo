@@ -21,6 +21,7 @@ internal class BridgeService : Service() {
     val connection get() = supervisor.transport
     private lateinit var display: GlassesDisplay
     private lateinit var audio: PromptAudio
+    lateinit var voice: GlassesVoice; private set
     val navigation get() = NavigationFeed
     lateinit var agent: MobileAgent; private set
     lateinit var codex: CodexClient; private set
@@ -60,6 +61,15 @@ internal class BridgeService : Service() {
     private val audioRefresh = object : Runnable {
         override fun run() {
             audioOwner?.let { dispatch(GlassesEvent.AudioChanged(it, audio.state.coordinatorState())) }
+            if (voice.active) {
+                val canListen = codex.connected && !codex.running && codex.requests.isEmpty() &&
+                    state.link.phase == LinkPhase.FULL && state.session?.mode == PageMode.PROMPT &&
+                    state.session?.phase == PagePhase.READY && state.ownership == DisplayOwnership.APP
+                voice.readiness(canListen, if (codex.running) "Codex is working; listening paused."
+                    else if (codex.requests.isNotEmpty()) "Reply to the approval on your phone; listening paused."
+                    else "Waiting for the glasses prompt audio session and computer connection.")
+                notifyUI()
+            }
             main.postDelayed(this, 1_000)
         }
     }
@@ -69,8 +79,12 @@ internal class BridgeService : Service() {
         settings = AppSettings(this)
         supervisor = ConnectionSupervisor(this, main,
             { dispatch(GlassesEvent.LinkChanged(it)) }, { devices[it.bluetooth.address] = it; notifyUI() },
-            { frame, source -> runCatching { display.receive(frame, source) }.onFailure { onLog("眼镜消息解析失败：$source") } }, ::onLog)
-        audio = PromptAudio()
+            { frame, source -> runCatching { display.receive(frame, source) }.onFailure { onLog("Could not parse glasses message: $source") } }, ::onLog)
+        voice = GlassesVoice(main, ::notifyUI) { text ->
+            runCatching { submitAnswer(AnswerSource.COMPUTER_CODEX, text) }
+                .onFailure { voice.stop(); onLog("Voice request could not be submitted. Reconnect and enable voice again.") }
+        }
+        audio = PromptAudio { left, _ -> voice.accept(left) }
         display = GlassesDisplay(connection::sendFrame,
             { task, delay -> main.postDelayed(task, delay) }, { main.removeCallbacks(it) }, ::onLog,
             { id, signal -> dispatch(GlassesEvent.SessionSignal(id, signal)) },
@@ -81,7 +95,7 @@ internal class BridgeService : Service() {
         agent = MobileAgent(settings, ::notifyUI, ::executeTool) { question, answer -> completed(AnswerSource.MOBILE_AGENT, question, answer) }
         codex = CodexClient(settings, ::notifyUI) { question, answer -> completed(AnswerSource.COMPUTER_CODEX, question, answer) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel("bridge", "眼镜连接与导航", NotificationManager.IMPORTANCE_LOW))
+            NotificationChannel("bridge", "Glasses connection and navigation", NotificationManager.IMPORTANCE_LOW))
         initialized = true
         dispatch(GlassesEvent.NavigationChanged(navigationSnapshot()))
         NavigationNotifications.refresh(this)
@@ -113,10 +127,13 @@ internal class BridgeService : Service() {
                 val transition = GlassesCoordinator.reduce(state, events.removeFirst())
                 val previous = state
                 state = transition.state
+                if (voice.active && (state.link.phase != LinkPhase.FULL || state.disconnecting ||
+                        state.ownership == DisplayOwnership.YIELDED || state.intent == DisplayIntent.Idle ||
+                        state.session?.mode == PageMode.NAVIGATION)) voice.stop()
                 if (state.displayDescription != previous.displayDescription) onLog(state.displayDescription)
                 transition.effects.forEach { effect ->
                     runCatching { execute(effect) }.onFailure { error ->
-                        val message = error.message ?: "眼镜操作失败"
+                        val message = error.message ?: "Glasses operation failed"
                         onLog(message)
                         when (effect) {
                             is GlassesEffect.StartPage -> events.add(GlassesEvent.SessionSignal(effect.session.id, PageSignal.Failed(message)))
@@ -163,15 +180,15 @@ internal class BridgeService : Service() {
     }
 
     fun scan() {
-        check(!ready && state.link.phase != LinkPhase.CONNECTING && !state.disconnecting) { "请先断开当前连接" }
+        check(!ready && state.link.phase != LinkPhase.CONNECTING && !state.disconnecting) { "Disconnect the current connection first" }
         devices.clear(); supervisor.scan()
     }
     fun connect(device: RayneoConnection.Device, bleOnly: Boolean) {
-        check(!ready && !state.disconnecting) { "请先断开当前连接" }
+        check(!ready && !state.disconnecting) { "Disconnect the current connection first" }
         startForegroundService(Intent(this, BridgeService::class.java))
         dispatch(GlassesEvent.BeginConnection)
         runCatching { supervisor.connect(device, bleOnly) }.onFailure {
-            supervisor.disconnect(); onLog(it.message ?: "连接失败")
+            supervisor.disconnect(); onLog(it.message ?: "Connection failed")
         }
     }
     fun disconnect() {
@@ -179,22 +196,30 @@ internal class BridgeService : Service() {
         dispatch(GlassesEvent.Disconnect)
     }
     fun followNavigation(key: String) {
-        check(!state.disconnecting) { "请等待断开完成" }
-        val entry = checkNotNull(navigation.entries[key]) { "该通知已消失，请在高德开始导航后刷新" }
+        check(!state.disconnecting) { "Wait for disconnection to finish" }
+        val entry = checkNotNull(navigation.entries[key]) { "This notification is gone. Start navigation in Amap and refresh." }
         val frame = entry.instruction?.let { NavigationFrame.render(it.direction, it.meters, entry.title) }
-            ?: NavigationFrame.status("指令暂未识别", "请查看高德")
+            ?: NavigationFrame.status("Instruction unknown", "Check Amap")
         dispatch(GlassesEvent.SelectNavigation(NavigationState(true, key, frame)))
     }
     fun stopNavigation() = dispatch(GlassesEvent.StopNavigation)
     fun reopenNavigation() {
-        val key = navigation.selectedKey ?: error("请先选择要跟随的高德通知")
+        val key = navigation.selectedKey ?: error("Select an Amap notification to follow first")
         followNavigation(key)
     }
-    fun pausePrompt() = dispatch(GlassesEvent.PauseDisplay)
+    fun pausePrompt() { voice.stop(); dispatch(GlassesEvent.PauseDisplay) }
+    fun startGlassesVoice() {
+        check(codex.connected && !codex.running && codex.requests.isEmpty()) { "Connect computer Codex and finish pending tasks or approvals first." }
+        check(state.link.phase == LinkPhase.FULL && !state.disconnecting) { "Connect glasses fully first." }
+        dispatch(GlassesEvent.OpenStandby)
+        voice.start(settings.read())
+        notifyUI()
+    }
+    fun stopGlassesVoice() { voice.stop(); dispatch(GlassesEvent.PauseDisplay); notifyUI() }
     fun openStandby() = dispatch(GlassesEvent.OpenStandby)
     fun retryAudio() {
         check(state.link.phase == LinkPhase.FULL && state.session?.phase in setOf(PagePhase.LAYOUT, PagePhase.SETTLING, PagePhase.READY)) {
-            "请先启动导航或实时提示，并等待眼镜确认"
+            "Start navigation or live prompts and wait for glasses confirmation first"
         }
         dispatch(GlassesEvent.RetryAudio)
     }
@@ -202,8 +227,8 @@ internal class BridgeService : Service() {
 
     fun submitAnswer(source: AnswerSource, text: String) {
         when (source) {
-            AnswerSource.MOBILE_AGENT -> check(!agent.running) { "请等待回答，或先停止" }
-            AnswerSource.COMPUTER_CODEX -> check(codex.connected && !codex.running) { "请连接电脑并等待当前任务结束" }
+            AnswerSource.MOBILE_AGENT -> check(!agent.running) { "Wait for the answer, or stop the current task first" }
+            AnswerSource.COMPUTER_CODEX -> check(codex.connected && !codex.running) { "Connect your computer and wait for the current task to finish" }
         }
         val ref = AnswerRef(source, ++nextAnswer)
         dispatch(GlassesEvent.AnswerRequested(ref))
@@ -230,9 +255,9 @@ internal class BridgeService : Service() {
     }
     fun clearAgent() { invalidateAnswer(AnswerSource.MOBILE_AGENT); agent.clear() }
     fun connectCodex() { invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.connect() }
-    fun closeCodex() { invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.close() }
+    fun closeCodex() { voice.stop(); invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.close() }
     fun newCodexConversation() {
-        check(!codex.running) { "请先结束当前电脑任务" }
+        check(!codex.running) { "End the current computer task first" }
         invalidateAnswer(AnswerSource.COMPUTER_CODEX); codex.newConversation()
     }
     private fun completed(source: AnswerSource, question: String, text: String) {
@@ -240,12 +265,12 @@ internal class BridgeService : Service() {
         if (text.isNotBlank()) dispatch(GlassesEvent.AnswerCompleted(AnswerContent(permit.ref, question, text), permit))
     }
     fun revealAnswer(source: AnswerSource) {
-        check(state.link.phase == LinkPhase.FULL && !state.disconnecting) { "请先完整连接眼镜" }
+        check(state.link.phase == LinkPhase.FULL && !state.disconnecting) { "Establish a full glasses connection first" }
         val (question, answer) = when (source) {
             AnswerSource.MOBILE_AGENT -> agent.question to agent.answer
             AnswerSource.COMPUTER_CODEX -> codex.question to codex.answer
         }
-        require(answer.isNotBlank()) { "还没有可显示的回答" }
+        require(answer.isNotBlank()) { "No answer to display yet" }
         dispatch(GlassesEvent.RevealAnswer(AnswerContent(AnswerRef(source, ++nextAnswer), question, answer)))
     }
     private fun navigationSnapshot() = NavigationState(navigation.enabled, navigation.selectedKey, navigation.frame)
@@ -258,7 +283,7 @@ internal class BridgeService : Service() {
                 connection.sendNotification(args.getString("title"), args.getString("body"))
                 completion(Result.success(JSONObject().put("queued", true).put("visible", "unverified")))
             }
-            else -> completion(Result.failure(IllegalArgumentException("未知工具")))
+            else -> completion(Result.failure(IllegalArgumentException("Unknown tool")))
         }
     }
     private fun onLog(text: String) {
@@ -269,10 +294,10 @@ internal class BridgeService : Service() {
     }
     private fun notifyUI() { if (initialized && !destroyed) observers.toList().forEach { it() } }
     private fun summary() = state.displayDescription + when (state.audio.phase) {
-        AudioPhase.RECEIVING -> " · 收音中"
-        AudioPhase.WAITING_PACKET, AudioPhase.WAITING_PCM -> " · 等待音频"
-        AudioPhase.STALLED -> " · 音频已中断"
-        AudioPhase.FAILED -> " · 音频错误"
+        AudioPhase.RECEIVING -> " · Receiving audio"
+        AudioPhase.WAITING_PACKET, AudioPhase.WAITING_PCM -> " · Waiting for audio"
+        AudioPhase.STALLED -> " · Audio interrupted"
+        AudioPhase.FAILED -> " · Audio error"
         AudioPhase.STOPPED -> ""
     }
     private fun notification(): Notification {
@@ -280,7 +305,7 @@ internal class BridgeService : Service() {
         val stop = PendingIntent.getService(this, 1, Intent(this, BridgeService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, "bridge").setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentTitle("OpenRayneo").setContentText(summary()).setContentIntent(open).setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "停止服务", stop).build()).build()
+            .addAction(Notification.Action.Builder(null, "Stop service", stop).build()).build()
     }
     private fun updateNotification() {
         if (!initialized || !foreground || stopAfterDisconnect) return
@@ -290,7 +315,7 @@ internal class BridgeService : Service() {
     override fun onDestroy() {
         destroyed = true; observers.clear(); main.removeCallbacksAndMessages(null)
         navigation.observers.remove(navigationObserver)
-        agent.close(); codex.close(); display.reset(); audio.close(); supervisor.close()
+        voice.close(); agent.close(); codex.close(); display.reset(); audio.close(); supervisor.close()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }

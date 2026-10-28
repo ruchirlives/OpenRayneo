@@ -29,3 +29,14 @@ analysis/
 # Runtime logs and macOS metadata
 *.log
 .DS_Store
+
+# Local Windows tooling, downloaded speech models, credentials, and IDE state
+.local-tools/
+.local-tmp/
+.idea/
+android/.idea/
+android/.gradle-local/
+__pycache__/
+*.py[cod]
+phone-token
+OpenRayneo-setup.json

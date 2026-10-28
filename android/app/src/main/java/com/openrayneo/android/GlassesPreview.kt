@@ -35,7 +35,7 @@ internal fun NavigationGrid(frame: String, modifier: Modifier = Modifier) {
     Canvas(
         modifier.fillMaxWidth().aspectRatio(20f / 7f).semantics {
             contentDescription =
-                "眼镜导航布局，20 列 5 行。" + frame.replace('█', ' ').replace('　', ' ').trim()
+                "Glasses navigation layout, 20 columns by 5 rows." + frame.replace('█', ' ').replace('　', ' ').trim()
         }
     ) {
         val cellWidth = size.width / 20
@@ -89,15 +89,15 @@ internal fun GlassesOutputPreview(state: GlassesState) {
             content != null
     val title =
         when {
-            state.ownership == DisplayOwnership.YIELDED -> "已让出显示"
-            state.link.phase != LinkPhase.FULL -> "尚未同步到眼镜"
-            session == null -> "未开启应用显示"
+            state.ownership == DisplayOwnership.YIELDED -> "Display released"
+            state.link.phase != LinkPhase.FULL -> "Not sent to glasses yet"
+            session == null -> "App display inactive"
             session.phase == PagePhase.CLOSING ->
-                if (state.intent == DisplayIntent.Idle) "正在关闭画面" else "正在切换画面"
-            content == null -> "等待首个画面写出"
-            session.content != content -> "正在更新 · 下方为上次写出内容"
-            session.mode == PageMode.NAVIGATION -> "导航 · 已写出内容"
-            else -> "实时提示 · 已写出内容"
+                if (state.intent == DisplayIntent.Idle) "Closing display" else "Switching display"
+            content == null -> "Waiting for first display update"
+            session.content != content -> "Updating · Last sent content below"
+            session.mode == PageMode.NAVIGATION -> "Navigation · Sent content"
+            else -> "Live prompts · Sent content"
         }
     Surface(
         color = LensBlack,
@@ -121,10 +121,10 @@ internal fun GlassesOutputPreview(state: GlassesState) {
             } else {
                 Text(
                     when {
-                        state.ownership == DisplayOwnership.YIELDED -> "眼镜当前页面由设备控制，手机无法读取。"
-                        state.link.phase != LinkPhase.FULL -> "完整连接后，显示本次会话写出的内容。"
+                        state.ownership == DisplayOwnership.YIELDED -> "The glasses control their current page; the phone cannot read it."
+                        state.link.phase != LinkPhase.FULL -> "After a full connection, content sent in this session appears here."
                         session != null -> state.displayDescription
-                        else -> "选择导航或打开实时提示。"
+                        else -> "Select navigation or open live prompts."
                     },
                     Modifier.padding(vertical = 20.dp),
                     style = MaterialTheme.typography.bodyMedium,
@@ -132,5 +132,5 @@ internal fun GlassesOutputPreview(state: GlassesState) {
             }
         }
     }
-    Note("发送记录预览，非实时屏幕截图。", Modifier.padding(top = 8.dp))
+    Note("Preview of sent content, not a live screenshot.", Modifier.padding(top = 8.dp))
 }

@@ -71,7 +71,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                     bottomStart = 8.dp,
                 ),
             ) {
-                Text(if (s.phoneRunning) "手机模型 · 处理中" else "手机模型")
+                Text(if (s.phoneRunning) "Phone model · Working" else "Phone model")
             }
             SegmentedButton(
                 !mobile,
@@ -82,8 +82,8 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                 ),
             ) {
                 Text(
-                    if (s.approvals.isNotEmpty()) "电脑 · 待回复"
-                    else if (s.computerRunning) "电脑 · 处理中" else "电脑 Codex"
+                    if (s.approvals.isNotEmpty()) "Computer · Reply needed"
+                    else if (s.computerRunning) "Computer · Working" else "Computer Codex"
                 )
             }
         }
@@ -93,7 +93,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                if (mobile && configured && question.isBlank() && !running) "模型配置已保存 · 可以开始提问"
+                if (mobile && configured && question.isBlank() && !running) "Model settings saved · Ready for questions"
                 else status,
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
@@ -104,7 +104,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                 onClick = { model.newConversation(source) },
                 enabled = s.available && !running && (mobile || configured),
             ) {
-                Icon(Icons.Outlined.AddComment, "新建对话")
+                Icon(Icons.Outlined.AddComment, "New conversation")
             }
         }
         LazyColumn(
@@ -113,6 +113,24 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
             contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            if (!mobile && configured)
+                item {
+                    ContentCard {
+                        Text("Glasses voice control", style = MaterialTheme.typography.titleMedium)
+                        Note(s.glassesVoiceStatus)
+                        Note("Enable once, then say: Codex, followed by your request. Pause after speaking. Channel 1 audio goes to your PC for local English transcription; only requests beginning with Codex are submitted. Approvals still need the phone.")
+                        if (s.glassesVoiceTranscript.isNotBlank()) Text("Last heard: ${s.glassesVoiceTranscript}")
+                        ToolButton(
+                            onClick = { model.attempt {
+                                if (s.glassesVoiceActive) model.service().stopGlassesVoice()
+                                else model.service().startGlassesVoice()
+                            } },
+                            enabled = s.available && (s.glassesVoiceActive ||
+                                (s.computerConnected && !running && s.approvals.isEmpty() && s.glasses.link.phase == LinkPhase.FULL)),
+                        ) { Text(if (s.glassesVoiceActive) "Stop glasses voice" else "Start glasses voice") }
+                        Note("Say Codex, stop listening to disable transcription. Listening pauses while Codex works and stops when the glasses disconnect or you pause their display.")
+                    }
+                }
             if (!configured)
                 item {
                     ContentCard {
@@ -123,30 +141,30 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                             tint = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            if (mobile) "手机模型尚未配置" else "电脑尚未配置",
+                            if (mobile) "Phone model not configured" else "Computer not configured",
                             style = MaterialTheme.typography.headlineSmall,
                         )
                         Note(
-                            if (mobile) "连接自己的模型服务，在手机上独立问答。也可以查询导航跟随状态或发送眼镜通知。"
-                            else "连接电脑上的 Codex，查看任务进度，在这里完成审批并接收回答。"
+                            if (mobile) "Connect your model service to chat on your phone, check navigation status, or send glasses notifications."
+                            else "Connect to Codex on your computer to follow tasks, respond to approvals, and receive answers here."
                         )
                         ToolButton(onClick = { configure(if (mobile) "model" else "computer") }) {
-                            Text(if (mobile) "配置手机模型" else "配置电脑连接")
+                            Text(if (mobile) "Configure phone model" else "Configure computer connection")
                         }
                     }
                 }
             else if (!mobile && !s.computerConnected)
                 item {
                     ContentCard {
-                        Text("连接电脑 Codex", style = MaterialTheme.typography.titleLarge)
-                        Note("确认电脑连接程序正在运行。USB 模式需要数据线和端口转发。")
+                        Text("Connect to computer Codex", style = MaterialTheme.typography.titleLarge)
+                        Note("Keep the connection script running on your computer. USB mode needs a data cable and port forwarding.")
                         ToolButton(
                             onClick = { model.attempt { model.service().connectCodex() } },
                             enabled = s.available,
                         ) {
-                            Text("连接／恢复会话")
+                            Text("Connect / Resume session")
                         }
-                        TextButton(onClick = { configure("computer") }) { Text("检查连接配置") }
+                        TextButton(onClick = { configure("computer") }) { Text("Check connection settings") }
                     }
                 }
             else if (question.isBlank() && history.isEmpty())
@@ -162,8 +180,8 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                             Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary,
                         )
-                        Text("新对话", style = MaterialTheme.typography.headlineSmall)
-                        Note(if (mobile) "试着问：现在眼镜的导航跟随状态如何？" else "写下任务，让电脑 Codex 帮你处理。")
+                        Text("New conversation", style = MaterialTheme.typography.headlineSmall)
+                        Note(if (mobile) "Try asking: What is the glasses navigation status?" else "Enter a task for Codex on your computer.")
                     }
                 }
             history.forEach { record -> item { ConversationTurn(record.question, record.answer) } }
@@ -177,7 +195,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Note(if (!mobile && s.approvals.isNotEmpty()) "等待你的回复" else "正在处理…")
+                            Note(if (!mobile && s.approvals.isNotEmpty()) "Waiting for your reply" else "Working…")
                         }
                     } else if (answer.isNotBlank()) {
                         Row(
@@ -190,18 +208,18 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                                 },
                                 enabled = s.glasses.link.phase == LinkPhase.FULL,
                             ) {
-                                Text("显示到眼镜")
+                                Text("Show on glasses")
                             }
                             val context = LocalContext.current
                             TextButton(
                                 onClick = {
                                     context
                                         .getSystemService(ClipboardManager::class.java)
-                                        .setPrimaryClip(ClipData.newPlainText("回答", answer))
-                                    model.notice = "回答已复制"
+                                        .setPrimaryClip(ClipData.newPlainText("Answer", answer))
+                                    model.notice = "Answer copied"
                                 }
                             ) {
-                                Text("复制")
+                                Text("Copy")
                             }
                         }
                     }
@@ -213,17 +231,17 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
             if ((s.glasses.intent as? DisplayIntent.Answer)?.ref?.source == source)
                 item {
                     ContentCard {
-                        Text("眼镜输出", style = MaterialTheme.typography.titleSmall)
+                        Text("Glasses output", style = MaterialTheme.typography.titleSmall)
                         GlassesOutputPreview(s.glasses)
                         if (
                             (s.glasses.intent as? DisplayIntent.Answer)?.returnTo ==
                                 ReturnTarget.NAVIGATION
                         )
-                            Note("回答写出约 12 秒后返回导航；也可以现在结束回答。")
+                            Note("Navigation resumes about 12 seconds after the answer is sent. You can also end it now.")
                         TextButton(
                             onClick = { model.attempt { model.service().dismissAnswer() } }
                         ) {
-                            Text("结束眼镜回答")
+                            Text("End glasses answer")
                         }
                     }
                 }
@@ -242,7 +260,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                         draft,
                         { if (mobile) model.phoneDraft = it else model.computerDraft = it },
                         Modifier.weight(1f),
-                        placeholder = { Text(if (mobile) "问问手机模型…" else "交给电脑的任务…") },
+                        placeholder = { Text(if (mobile) "Ask the phone model…" else "Task for your computer…") },
                         maxLines = 5,
                         shape = MaterialTheme.shapes.large,
                     )
@@ -251,7 +269,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                             onClick = { model.attempt { model.service().cancelAnswer(source) } },
                             Modifier.size(48.dp),
                         ) {
-                            Icon(Icons.Outlined.Stop, "停止当前任务")
+                            Icon(Icons.Outlined.Stop, "Stop current task")
                         }
                     else
                         FilledIconButton(
@@ -264,7 +282,7 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Outlined.Send,
-                                "发送至${if (mobile) "手机模型" else "电脑 Codex"}",
+                                "Send to ${if (mobile) "Phone model" else "Computer Codex"}",
                             )
                         }
                 }
@@ -279,10 +297,10 @@ internal fun AssistantScreen(model: AppModel, actions: UiActions, configure: (St
                     ) {
                         Icon(Icons.Outlined.MicNone, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("手机语音输入", style = MaterialTheme.typography.labelMedium)
+                        Text("Phone voice input", style = MaterialTheme.typography.labelMedium)
                     }
                     Text(
-                        if (mobile) "发送至手机模型" else "发送至电脑 Codex",
+                        if (mobile) "Send to Phone model" else "Send to Computer Codex",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -351,7 +369,7 @@ private fun ApprovalCard(model: AppModel, request: CodexClient.Request) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Icons.AutoMirrored.Outlined.HelpOutline, null)
-            Text("电脑需要你的回复", style = MaterialTheme.typography.titleLarge)
+            Text("Your computer needs a reply", style = MaterialTheme.typography.titleLarge)
             if (request.method == "item/tool/requestUserInput") {
                 val questions = request.params.getJSONArray("questions")
                 for (index in 0 until questions.length()) {
@@ -374,7 +392,7 @@ private fun ApprovalCard(model: AppModel, request: CodexClient.Request) {
                         answers[id].orEmpty(),
                         { answers[id] = it },
                         Modifier.fillMaxWidth(),
-                        label = { Text("你的回复") },
+                        label = { Text("Your reply") },
                         keyboardOptions =
                             KeyboardOptions(
                                 keyboardType =
@@ -410,7 +428,7 @@ private fun ApprovalCard(model: AppModel, request: CodexClient.Request) {
                                 true
                         },
                 ) {
-                    Text("提交回复")
+                    Text("Submit reply")
                 }
             } else {
                 SelectionContainer {
@@ -426,7 +444,7 @@ private fun ApprovalCard(model: AppModel, request: CodexClient.Request) {
                         }
                     }
                 ) {
-                    Text("允许这一次")
+                    Text("Allow once")
                 }
                 ToolOutlinedButton(
                     onClick = {
@@ -438,7 +456,7 @@ private fun ApprovalCard(model: AppModel, request: CodexClient.Request) {
                         }
                     }
                 ) {
-                    Text("拒绝")
+                    Text("Decline")
                 }
             }
         }

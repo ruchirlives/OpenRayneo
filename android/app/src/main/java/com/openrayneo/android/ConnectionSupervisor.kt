@@ -27,7 +27,7 @@ internal class ConnectionSupervisor(
         attempts++; retryScanning = true
         runCatching { transport.scan() }.onFailure {
             retryScanning = false
-            report(it.message ?: "重连扫描失败")
+            report(it.message ?: "Reconnect scan failed")
             scheduleRetry()
         }
     }
@@ -52,7 +52,7 @@ internal class ConnectionSupervisor(
             val result = runCatching { transport.connect(device, false) }
             if (result.isFailure) {
                 transport.disconnect()
-                report(result.exceptionOrNull()?.message ?: "重连失败")
+                report(result.exceptionOrNull()?.message ?: "Reconnection failed")
             }
             starting = false
             if (result.isFailure) scheduleRetry()
@@ -62,7 +62,7 @@ internal class ConnectionSupervisor(
         val wasReady = state.phase == LinkPhase.FULL
         val phase = when {
             ready -> if (bleOnly) LinkPhase.BLE_ONLY else LinkPhase.FULL
-            busy -> if (text.startsWith("正在扫描")) LinkPhase.SCANNING else LinkPhase.CONNECTING
+            busy -> if (text.startsWith("Scanning")) LinkPhase.SCANNING else LinkPhase.CONNECTING
             else -> LinkPhase.DISCONNECTED
         }
         state = LinkState(phase, text)
@@ -80,10 +80,10 @@ internal class ConnectionSupervisor(
         if (!retrying || target == null) return
         if (attempts >= 3) {
             retrying = false; retryScanning = false
-            state = LinkState(LinkPhase.DISCONNECTED, "自动重连已尝试三次，请检查蓝牙后重新连接")
+            state = LinkState(LinkPhase.DISCONNECTED, "Three reconnect attempts failed. Check Bluetooth and reconnect.")
             changed(state)
         } else {
-            state = LinkState(LinkPhase.RETRY_WAIT, "连接中断，等待第 ${attempts + 1} 次重连")
+            state = LinkState(LinkPhase.RETRY_WAIT, "Connection lost. Waiting for reconnect attempt ${attempts + 1} ")
             changed(state)
             main.postDelayed(retry, 5_000L * (attempts + 1))
         }
