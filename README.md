@@ -2,7 +2,7 @@
 
 ## English Android + glasses voice fork
 
-This fork adds an English Android interface and an opt-in **RayNeo iO microphone →
+This fork translates the original **Chinese Android interface into English** and adds an opt-in **RayNeo iO microphone →
 local Windows speech recognition → Codex → glasses answer** workflow. It is based on
 [Tobi1chi/OpenRayneo](https://github.com/Tobi1chi/OpenRayneo); the original author's
 Bluetooth protocol work and macOS implementation remain the foundation.
@@ -14,6 +14,11 @@ Bluetooth protocol work and macOS implementation remain the foundation.
   using the PC helper, preserving pairing, account binding, and app data.
 - Fix for Android delivering an MTU callback before Bluetooth service discovery,
   including regression tests for early and duplicate callbacks.
+
+**Working in our phone/glasses test:** English interface, spoken requests through
+the glasses' microphone, Codex replies displayed on the glasses, and switching
+between OpenRayneo and the official RayNeo app. See the guide for the tested
+hardware and the PC/ADB requirements; this is not a universal compatibility claim.
 
 **Start here:** [Windows installation and change summary](docs/english-voice-fork.md) ·
 [Voice workflow, privacy, and limits](docs/android-glasses-voice.md) ·

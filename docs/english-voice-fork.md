@@ -4,6 +4,11 @@ Based on Tobi1chi/OpenRayneo commit `7f2fc0dbb4414fa66bdc5a1be23d44b7d4b4ec31`.
 This fork preserves the upstream Apache-2.0 license and attribution. It is not an
 official RayNeo product and is not maintained by the upstream author.
 
+The four main changes are **Chinese-to-English Android translation**, **working
+glasses microphone voice input**, **Codex requests and answers on the glasses**,
+and **quick switching between OpenRayneo and the official RayNeo app**. These were
+functionally tested on the phone/glasses setup described below.
+
 ## Changes from upstream
 
 | Area | Fork changes |
